@@ -1,0 +1,19 @@
+{
+  "jobs": [
+    {
+      "jobName": "nf-NFCORE_RNASEQ_RNASEQ_ALIGN_STAR_STAR_ALIGN_sampleB",
+      "jobId": "3f1c2a9e-1b7d-4c55-9a51-6c0f6e3b2d11",
+      "status": "FAILED",
+      "statusReason": "Host EC2 (instance i-0a1b2c3d4e5f67890) terminated.",
+      "tags": {"nextflow.io/processName": "NFCORE_RNASEQ:RNASEQ:ALIGN_STAR:STAR_ALIGN", "nextflow.io/taskName": "sampleB"},
+      "container": {
+        "image": "quay.io/biocontainers/star:2.7.11b--h43eeafb_0",
+        "resourceRequirements": [{"type": "VCPU", "value": "12"}, {"type": "MEMORY", "value": "73728"}],
+        "logStreamName": "nf-star/default/9c4e1f"
+      },
+      "attempts": [
+        {"container": {"exitCode": null, "reason": "Host EC2 (instance i-0a1b2c3d4e5f67890) terminated.", "logStreamName": "nf-star/default/9c4e1f"}}
+      ]
+    }
+  ]
+}

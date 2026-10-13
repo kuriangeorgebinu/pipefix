@@ -1,0 +1,23 @@
+Oct-12 22:14:03.118 [Task monitor] ERROR nextflow.processor.TaskProcessor - Error executing process > 'NFCORE_SAREK:SAREK:BAM_VARIANT_CALLING_GERMLINE_ALL:GATK4_HAPLOTYPECALLER (sample1)'
+
+Caused by:
+  Process `NFCORE_SAREK:SAREK:BAM_VARIANT_CALLING_GERMLINE_ALL:GATK4_HAPLOTYPECALLER (sample1)` terminated with an error exit status (137)
+
+Command executed:
+  gatk --java-options "-Xmx15g" HaplotypeCaller --input sample1.md.cram --output sample1.g.vcf.gz -ERC GVCF
+
+Command exit status:
+  137
+
+Command output:
+  (empty)
+
+Command error:
+  22:13:58.402 INFO  ProgressMeter -          chr7:117548628             351.2             41810000         119058.3
+  Exception in thread "main" java.lang.OutOfMemoryError: Java heap space
+  	at htsjdk.samtools.util.BlockCompressedInputStream.inflateBlock(BlockCompressedInputStream.java:548)
+
+Work dir:
+  s3://lab-nextflow-work/e5/f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0
+
+Tip: when you have fixed the problem you can continue the execution adding the option `-resume` to the run command line

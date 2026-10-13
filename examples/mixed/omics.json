@@ -1,0 +1,11 @@
+{
+  "run": {"id": "1234567", "status": "FAILED", "failureReason": "WORKFLOW_RUN_FAILED"},
+  "tasks": [
+    {"taskId": "t1", "name": "SAMTOOLS_SORT (patient7)", "status": "FAILED", "memory": 8,
+     "statusMessage": "OutOfMemoryError: Container killed due to memory usage"},
+    {"taskId": "t2", "name": "GATK4_BASERECALIBRATOR (patient7)", "status": "FAILED", "memory": 16,
+     "statusMessage": "A USER ERROR has occurred: Input files reference and reads have incompatible contigs: chr1 vs 1"},
+    {"taskId": "t3", "name": "MULTIQC", "status": "FAILED", "memory": 4,
+     "statusMessage": "CannotPullContainerError: manifest unknown: 123456789012.dkr.ecr.us-east-1.amazonaws.com/multiqc:1.99"}
+  ]
+}
