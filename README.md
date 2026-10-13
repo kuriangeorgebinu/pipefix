@@ -38,6 +38,20 @@ pipefix investigate --batch-queue spot-queue --since 12h --repo . --open-pr
 | Container / tool | `CannotPullContainerError`, HealthOmics container errors, exit 127 | **Explains**, with whether the tag exists in ECR and which tags do |
 | Reference / input | missing `.fai`/`.dict`/index, `incompatible contigs`, `INPUT_URI_NOT_FOUND` | **Explains** |
 
+## The console
+
+```bash
+pipefix ui            # opens http://127.0.0.1:8787 in your browser
+```
+
+A local web console for the same flow: pick a Batch queue, job ids or a HealthOmics run, watch the investigation
+run, and review the result. Each failed task gets a resource lane (requested, peak used, the new value, the
+largest instance the queue can launch, any pipeline cap). Its evidence, the config precedence ladder showing which
+file and line sets the value today and what wins after the fix, its log, the diff, and buttons to write the change
+or open the merge request. **Try the demo** runs the whole flow against a built-in example account, with no AWS
+access needed. The console only listens on localhost and every action needs the page's session token. Fonts ship
+with pipefix, so it makes no third-party requests.
+
 ## Setup
 
 ```bash

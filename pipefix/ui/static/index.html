@@ -1,0 +1,837 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="pipefix-token" content="__PIPEFIX_TOKEN__">
+<title>pipefix console</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cpath d='M2 26 Q6 4 10 26' fill='none' stroke='%231F9D5A' stroke-width='3'/%3E%3Cpath d='M9 26 Q13 10 17 26' fill='none' stroke='%232563C9' stroke-width='3'/%3E%3Cpath d='M16 26 Q20 14 24 26' fill='none' stroke='%23C98A00' stroke-width='3'/%3E%3Cpath d='M22 26 Q26 7 30 26' fill='none' stroke='%23D23B32' stroke-width='3'/%3E%3C/svg%3E">
+<style>
+/* Fonts ship with pipefix (SIL Open Font License), so the console works offline and calls no third party. */
+@font-face { font-family: "Instrument Sans"; src: url("/fonts/instrument-sans-var.woff2") format("woff2");
+  font-weight: 400 700; font-stretch: 75% 100%; font-display: swap; }
+@font-face { font-family: "JetBrains Mono"; src: url("/fonts/jetbrains-mono-400.woff2") format("woff2"); font-weight: 400; font-display: swap; }
+@font-face { font-family: "JetBrains Mono"; src: url("/fonts/jetbrains-mono-500.woff2") format("woff2"); font-weight: 500; font-display: swap; }
+/* ------------------------------------------------------------------
+   pipefix console. Colour system borrowed from Sanger sequencing traces:
+   A green = fixed, C blue = platform fact, G amber = warning, T red = failure.
+   ------------------------------------------------------------------ */
+:root {
+  --bg: #F2F4F3; --surface: #FFFFFF; --surface-2: #E9EDEB; --sunk: #F7F8F8;
+  --ink: #17202B; --ink-2: #485462; --ink-3: #7A8592; --rule: #D6DCD9; --rule-2: #C4CCC8;
+  --A: #1F9D5A; --C: #2563C9; --G: #B07800; --T: #D23B32;
+  --A-wash: #E3F3EA; --C-wash: #E4ECFA; --G-wash: #FBF1DC; --T-wash: #FBE6E4;
+  --focus: #2563C9;
+  --sans: "Instrument Sans", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --mono: "JetBrains Mono", ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+  --r-panel: 14px; --r-ctl: 9px; --r-code: 6px;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0E1318; --surface: #151C23; --surface-2: #1D2630; --sunk: #11171D;
+    --ink: #E5EBF1; --ink-2: #A9B4C0; --ink-3: #74808C; --rule: #26313B; --rule-2: #334150;
+    --A: #3DBF78; --C: #6A9BF2; --G: #E1A52E; --T: #F06A5F;
+    --A-wash: #13291E; --C-wash: #152238; --G-wash: #2D2412; --T-wash: #331816;
+    --focus: #6A9BF2; color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0E1318; --surface: #151C23; --surface-2: #1D2630; --sunk: #11171D;
+  --ink: #E5EBF1; --ink-2: #A9B4C0; --ink-3: #74808C; --rule: #26313B; --rule-2: #334150;
+  --A: #3DBF78; --C: #6A9BF2; --G: #E1A52E; --T: #F06A5F;
+  --A-wash: #13291E; --C-wash: #152238; --G-wash: #2D2412; --T-wash: #331816;
+  --focus: #6A9BF2; color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+html, body { margin: 0; }
+body {
+  background: var(--bg); color: var(--ink); font: 400 15px/1.5 var(--sans);
+  -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility;
+}
+code, pre, .mono { font-family: var(--mono); font-size: 12.5px; }
+:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; border-radius: 4px; }
+button, input, select { font: inherit; color: inherit; }
+a { color: var(--C); }
+.sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+
+/* ---------- top bar ---------- */
+.top {
+  display: flex; align-items: center; gap: 16px; padding: 14px 28px;
+  border-bottom: 1px solid var(--rule); background: var(--surface);
+  position: sticky; top: 0; z-index: 5;
+}
+.brand { display: flex; align-items: center; gap: 10px; text-decoration: none; color: var(--ink); }
+.brand svg { width: 34px; height: 22px; }
+.brand b { font-size: 20px; font-weight: 700; letter-spacing: -0.02em; font-stretch: 92%; }
+.brand span { color: var(--ink-3); font-size: 13px; margin-left: 2px; }
+.conn { margin-left: auto; display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--ink-2); }
+.conn i { width: 8px; height: 8px; border-radius: 50%; background: var(--ink-3); }
+.conn.ok i { background: var(--A); box-shadow: 0 0 0 3px var(--A-wash); }
+.conn.bad i { background: var(--G); box-shadow: 0 0 0 3px var(--G-wash); }
+.iconbtn {
+  border: 1px solid var(--rule); background: transparent; border-radius: var(--r-ctl);
+  width: 34px; height: 34px; display: grid; place-items: center; cursor: pointer; color: var(--ink-2);
+}
+.iconbtn:hover { background: var(--surface-2); }
+
+/* ---------- shell ---------- */
+.shell { display: grid; grid-template-columns: 320px minmax(0, 1fr); min-height: calc(100vh - 63px); }
+.rail { border-right: 1px solid var(--rule); padding: 26px 24px; display: flex; flex-direction: column; gap: 30px; }
+main { padding: 34px 44px 80px; max-width: 1180px; width: 100%; }
+
+h1, h2, h3 { margin: 0; letter-spacing: -0.015em; }
+.rail h2 { font-size: 15px; font-weight: 600; margin-bottom: 14px; }
+
+/* segmented source picker */
+.seg { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; padding: 4px; border-radius: 11px; background: var(--surface-2); }
+.seg button {
+  border: 0; background: transparent; padding: 8px 6px; border-radius: 8px; cursor: pointer;
+  font-size: 13px; color: var(--ink-2); font-weight: 500;
+}
+.seg button[aria-checked="true"] { background: var(--surface); color: var(--ink); box-shadow: 0 1px 0 var(--rule-2); }
+.field { display: flex; flex-direction: column; gap: 6px; margin-top: 16px; }
+.field label { font-size: 13px; font-weight: 500; color: var(--ink-2); }
+.field input, .field select {
+  border: 1px solid var(--rule-2); background: var(--surface); border-radius: var(--r-ctl);
+  padding: 9px 11px; font-size: 14px; width: 100%;
+}
+.field input.code { font-family: var(--mono); font-size: 12.5px; }
+.field small { color: var(--ink-3); font-size: 12px; }
+details.more { margin-top: 14px; font-size: 13px; color: var(--ink-2); }
+details.more summary { cursor: pointer; }
+.btn {
+  border: 1px solid var(--rule-2); background: var(--surface); border-radius: var(--r-ctl);
+  padding: 10px 16px; font-weight: 600; font-size: 14px; cursor: pointer; display: inline-flex; gap: 8px; align-items: center;
+}
+.btn:hover { background: var(--surface-2); }
+.btn.primary { background: var(--ink); color: var(--surface); border-color: var(--ink); }
+.btn.primary:hover { filter: brightness(1.15); }
+.btn.go { background: var(--A); border-color: var(--A); color: #fff; }
+.btn:disabled { opacity: .45; cursor: not-allowed; }
+.run-btn { width: 100%; justify-content: center; margin-top: 20px; padding: 12px; }
+.note { font-size: 12.5px; color: var(--ink-3); margin: 10px 0 0; }
+
+.history ul { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }
+.history button {
+  width: 100%; text-align: left; border: 0; background: transparent; padding: 9px 10px; border-radius: 8px;
+  cursor: pointer; display: grid; grid-template-columns: 1fr auto; gap: 2px 10px; font-size: 13.5px;
+}
+.history button:hover, .history button[aria-current="true"] { background: var(--surface-2); }
+.history .when { color: var(--ink-3); font-size: 12px; }
+.history .tally { grid-row: span 2; align-self: center; display: flex; gap: 3px; }
+.tally i { width: 6px; height: 16px; border-radius: 2px; background: var(--rule-2); }
+.tally i.fx { background: var(--A); }
+.tally i.nd { background: var(--T); }
+.history .empty { color: var(--ink-3); font-size: 13px; }
+
+/* ---------- empty / progress / error ---------- */
+.welcome { max-width: 640px; padding-top: 40px; }
+.welcome h1 { font-size: 38px; line-height: 1.12; font-weight: 600; font-stretch: 94%; }
+.welcome p { color: var(--ink-2); font-size: 16.5px; max-width: 58ch; margin: 16px 0 0; }
+.welcome .trace { margin: 36px 0 30px; width: 100%; height: 86px; display: block; }
+.steps-intro { display: grid; grid-template-columns: repeat(3, 1fr); gap: 22px; margin-top: 30px; }
+.steps-intro div { border-top: 2px solid var(--rule-2); padding-top: 12px; font-size: 14px; color: var(--ink-2); }
+.steps-intro b { display: block; color: var(--ink); font-weight: 600; margin-bottom: 4px; }
+.steps-intro div:nth-child(1) { border-color: var(--C); }
+.steps-intro div:nth-child(2) { border-color: var(--G); }
+.steps-intro div:nth-child(3) { border-color: var(--A); }
+
+.progress { max-width: 620px; padding-top: 30px; }
+.progress h1 { font-size: 28px; font-weight: 600; }
+.progress ol { list-style: none; padding: 0; margin: 26px 0 0; display: flex; flex-direction: column; gap: 12px; }
+.progress li { display: grid; grid-template-columns: 22px 1fr; gap: 12px; align-items: center; color: var(--ink-2); }
+.progress li.done { color: var(--ink); }
+.progress li .st { width: 16px; height: 16px; border-radius: 50%; border: 2px solid var(--rule-2); }
+.progress li.running .st { border-color: var(--C); border-top-color: transparent; animation: spin .9s linear infinite; }
+.progress li.done .st { border-color: var(--A); background: var(--A); box-shadow: inset 0 0 0 3px var(--surface); }
+.progress li.failed .st { border-color: var(--T); background: var(--T); }
+@keyframes spin { to { transform: rotate(360deg); } }
+
+.errorbox { max-width: 640px; padding-top: 30px; }
+.errorbox h1 { font-size: 26px; font-weight: 600; }
+.errorbox pre { white-space: pre-wrap; background: var(--T-wash); color: var(--ink); padding: 14px 16px; border-radius: var(--r-code); margin: 18px 0; }
+
+/* ---------- verdict ---------- */
+.verdict { padding-bottom: 26px; }
+.runref { color: var(--ink-3); font-size: 13.5px; display: flex; flex-wrap: wrap; gap: 6px 18px; }
+.runref b { color: var(--ink-2); font-weight: 500; }
+.verdict h1 { font-size: 34px; line-height: 1.15; font-weight: 600; margin-top: 10px; max-width: 30ch; font-stretch: 94%; }
+.key { display: flex; flex-wrap: wrap; gap: 18px; margin-top: 18px; font-size: 13px; color: var(--ink-2); }
+.key span { display: inline-flex; align-items: center; gap: 7px; }
+.key i { width: 18px; height: 4px; border-radius: 2px; display: inline-block; }
+
+/* ---------- the lanes (the one bold element) ---------- */
+.lanes { border: 1px solid var(--rule); border-radius: var(--r-panel); background: var(--surface); overflow: hidden; }
+.lane {
+  display: grid; grid-template-columns: minmax(170px, 230px) minmax(0, 1fr) 132px; gap: 22px; align-items: center;
+  padding: 18px 22px; border-top: 1px solid var(--rule); cursor: pointer; position: relative; text-align: left;
+  width: 100%; background: transparent; border-left: 0; border-right: 0; border-bottom: 0;
+}
+.lane:first-child { border-top: 0; }
+.lane:hover { background: var(--sunk); }
+.lane[aria-pressed="true"] { background: var(--sunk); }
+.lane[aria-pressed="true"]::before { content: ""; position: absolute; left: 0; top: 12px; bottom: 12px; width: 3px; border-radius: 0 3px 3px 0; background: var(--ink); }
+.lane-name strong { display: block; font-size: 14.5px; font-weight: 600; overflow-wrap: anywhere; }
+.lane-name span { color: var(--ink-3); font-size: 13px; }
+.lane-cls { display: flex; align-items: center; gap: 7px; font-size: 13px; color: var(--ink-2); margin-top: 6px; }
+.lane-cls .dot { width: 8px; height: 8px; border-radius: 50%; }
+.lane-out { font-size: 13px; text-align: right; }
+.lane-out b { display: block; font-weight: 600; }
+.lane-out small { color: var(--ink-3); }
+.lane-out.fixed b { color: var(--A); }
+.lane-out.you b { color: var(--T); }
+
+.track { position: relative; height: 64px; }
+.gel {
+  position: absolute; left: 0; right: 0; top: 24px; height: 16px; border-radius: 4px;
+  background:
+    repeating-linear-gradient(90deg, transparent 0 calc(10% - 1px), var(--rule) calc(10% - 1px) 10%),
+    var(--surface-2);
+}
+.used { position: absolute; left: 0; top: 24px; height: 16px; border-radius: 4px 0 0 4px; background: linear-gradient(90deg, transparent, var(--T-wash)); }
+.band { position: absolute; top: 19px; height: 26px; width: 4px; margin-left: -2px; border-radius: 2px; transform-origin: center; }
+.band.peak { background: var(--T); }
+.band.had { background: var(--ink-2); width: 2px; margin-left: -1px; }
+.band.new { background: var(--A); width: 5px; }
+.band.ceil, .band.cap { width: 0; background: none; border-left: 2px dashed var(--C); top: 14px; height: 36px; margin-left: -1px; border-radius: 0; }
+.band.cap { border-left-color: var(--G); }
+.tag { position: absolute; font-size: 11.5px; line-height: 1; white-space: nowrap; transform: translateX(-50%); color: var(--ink-2); }
+.tag.up { top: 1px; } .tag.down { top: 50px; } .tag.down2 { top: 66px; }
+.track.tall { height: 80px; }
+.tag.peak { color: var(--T); } .tag.new { color: var(--A); font-weight: 600; } .tag.ceil { color: var(--C); } .tag.cap { color: var(--G); }
+.tag.edge-r { transform: translateX(-100%); } .tag.edge-l { transform: none; }
+
+.attempts { display: flex; gap: 6px; align-items: center; height: 64px; }
+.att { height: 16px; border-radius: 4px; background: var(--T-wash); border: 1.5px solid var(--T); position: relative; flex: 1 1 0; min-width: 40px; }
+.att::after { content: "×"; position: absolute; right: -2px; top: 50%; transform: translate(50%, -50%); color: var(--T); font-weight: 700; font-size: 16px; background: var(--surface); line-height: 1; padding: 0 1px; }
+.att.next { background: var(--A-wash); border: 1.5px dashed var(--A); flex: 1.2 1 0; }
+.att.next::after { content: none; }
+.att-caption { font-size: 12px; color: var(--ink-2); margin-top: 4px; }
+
+.cause { display: flex; align-items: center; min-height: 64px; }
+.cause code {
+  background: var(--sunk); border: 1px solid var(--rule); border-radius: var(--r-code); padding: 7px 10px;
+  color: var(--ink); max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display: block;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .lanes.fresh .band, .lanes.fresh .used { animation: grow .7s cubic-bezier(.2,.8,.2,1) both; }
+  .lanes.fresh .used { transform-origin: left; animation-name: fill; }
+  .lanes.fresh .lane:nth-child(2) .band, .lanes.fresh .lane:nth-child(2) .used { animation-delay: .08s; }
+  .lanes.fresh .lane:nth-child(3) .band, .lanes.fresh .lane:nth-child(3) .used { animation-delay: .16s; }
+  .lanes.fresh .lane:nth-child(4) .band, .lanes.fresh .lane:nth-child(4) .used { animation-delay: .24s; }
+  @keyframes grow { from { transform: scaleY(0); opacity: 0; } }
+  @keyframes fill { from { transform: scaleX(0); } }
+}
+
+/* ---------- sections below ---------- */
+.section { margin-top: 44px; }
+.section > h2 { font-size: 21px; font-weight: 600; }
+.section > p.lede { color: var(--ink-2); margin: 6px 0 0; max-width: 72ch; }
+
+.detail-head { display: flex; justify-content: space-between; gap: 20px; align-items: flex-start; }
+.detail-head h2 { font-size: 21px; font-weight: 600; overflow-wrap: anywhere; }
+.conf { text-align: right; flex: none; }
+.conf b { font-size: 22px; font-weight: 600; display: block; line-height: 1.1; }
+.conf small { color: var(--ink-3); font-size: 12px; }
+.meter { width: 120px; height: 4px; border-radius: 2px; background: var(--surface-2); margin-top: 6px; overflow: hidden; }
+.meter i { display: block; height: 100%; background: var(--ink); }
+
+.tabs { display: flex; gap: 22px; border-bottom: 1px solid var(--rule); margin-top: 22px; }
+.tabs button {
+  border: 0; background: none; padding: 10px 0; font-weight: 500; font-size: 14px; color: var(--ink-3);
+  cursor: pointer; border-bottom: 2px solid transparent; margin-bottom: -1px;
+}
+.tabs button[aria-selected="true"] { color: var(--ink); border-bottom-color: var(--ink); }
+.panel { padding-top: 20px; }
+
+.evidence { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }
+.evidence li { display: grid; grid-template-columns: 14px 1fr; gap: 10px; font-size: 14px; }
+.evidence li::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: var(--ink-3); margin-top: 8px; }
+.rec { margin-top: 18px; padding: 14px 16px; border-radius: 10px; background: var(--surface); border: 1px solid var(--rule); font-size: 14px; }
+.rec ul { margin: 6px 0 0; padding-left: 18px; color: var(--ink-2); }
+.rec li + li { margin-top: 3px; }
+.rec.fixed { border-color: color-mix(in srgb, var(--A) 45%, var(--rule)); }
+.rec b { font-weight: 600; }
+.facts { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 14px 24px; margin-top: 20px; font-size: 13.5px; }
+.facts dt { color: var(--ink-3); font-size: 12.5px; }
+.facts dd { margin: 2px 0 0; overflow-wrap: anywhere; }
+
+/* precedence ladder */
+.ladder { display: flex; flex-direction: column; gap: 22px; }
+.ladder h3 { font-size: 13.5px; font-weight: 600; margin-bottom: 8px; color: var(--ink-2); font-family: var(--mono); }
+.rung {
+  display: grid; grid-template-columns: 110px minmax(0, 1.1fr) minmax(0, 1.3fr) auto; gap: 14px; align-items: center;
+  padding: 10px 14px; border: 1px solid var(--rule); border-top: 0; background: var(--surface); font-size: 13.5px;
+}
+.rung:first-of-type { border-top: 1px solid var(--rule); border-radius: 10px 10px 0 0; }
+.rung:last-child { border-radius: 0 0 10px 10px; }
+.rung:only-of-type { border-radius: 10px; }
+.rung .lvl { font-size: 12px; color: var(--ink-3); }
+.rung code { color: var(--ink); overflow-wrap: anywhere; }
+.rung .where { font-size: 12px; color: var(--ink-3); text-align: right; font-family: var(--mono); }
+.rung.over code { color: var(--ink-3); text-decoration: line-through; text-decoration-color: var(--rule-2); }
+.rung.now { box-shadow: inset 3px 0 0 var(--ink-2); }
+.rung.next { background: var(--A-wash); box-shadow: inset 3px 0 0 var(--A); }
+.rung .state { font-size: 11.5px; color: var(--ink-2); grid-column: 2 / -1; margin-top: -6px; }
+.rung.next .state { color: var(--A); font-weight: 600; }
+
+.log { background: var(--sunk); border: 1px solid var(--rule); border-radius: 10px; padding: 14px 16px; overflow: auto; max-height: 340px; margin: 0; line-height: 1.6; white-space: pre-wrap; overflow-wrap: anywhere; }
+.log .hit { background: var(--T-wash); color: var(--ink); }
+
+/* change */
+.change { display: grid; grid-template-columns: minmax(0, 1fr) 300px; gap: 28px; margin-top: 18px; align-items: start; }
+.diff { border: 1px solid var(--rule); border-radius: var(--r-panel); overflow: hidden; background: var(--surface); }
+.diff .file { padding: 10px 16px; font-family: var(--mono); font-size: 12.5px; border-bottom: 1px solid var(--rule); background: var(--sunk); display: flex; justify-content: space-between; }
+.diff .file span { color: var(--ink-3); }
+.diff pre { margin: 0; padding: 8px 0; overflow-x: auto; line-height: 1.65; }
+.diff .ln { display: block; padding: 0 16px 0 12px; white-space: pre-wrap; overflow-wrap: anywhere; }
+.diff .ln.add { background: var(--A-wash); box-shadow: inset 3px 0 0 var(--A); }
+.diff .ln.del { background: var(--T-wash); box-shadow: inset 3px 0 0 var(--T); }
+.diff .ln.hunk { color: var(--C); }
+.diff .ln.cm { color: var(--ink-3); }
+.diff .ln.add.cm { color: var(--ink-2); }
+.actions { position: sticky; top: 86px; display: flex; flex-direction: column; gap: 12px; }
+.actions .btn { justify-content: center; }
+.actions p { margin: 0; font-size: 13px; color: var(--ink-2); }
+.result-msg { font-size: 13.5px; padding: 12px 14px; border-radius: 10px; background: var(--surface); border: 1px solid var(--rule); }
+.result-msg.ok { border-color: var(--A); background: var(--A-wash); }
+.result-msg.err { border-color: var(--T); background: var(--T-wash); }
+.nochange { padding: 22px; border: 1px dashed var(--rule-2); border-radius: var(--r-panel); color: var(--ink-2); font-size: 14px; margin-top: 18px; }
+
+/* findings */
+.findings { list-style: none; margin: 18px 0 0; padding: 0; border-top: 1px solid var(--rule); }
+.findings li { display: grid; grid-template-columns: 96px 1fr; gap: 16px; padding: 13px 0; border-bottom: 1px solid var(--rule); font-size: 14px; }
+.sev { font-size: 12.5px; font-weight: 600; display: inline-flex; align-items: center; gap: 7px; }
+.sev::before { content: ""; width: 8px; height: 8px; border-radius: 2px; background: currentColor; }
+.sev.block { color: var(--T); } .sev.warn { color: var(--G); } .sev.info { color: var(--C); }
+.findings b { font-weight: 600; }
+.findings p { margin: 2px 0 0; color: var(--ink-2); }
+.denials { width: 100%; border-collapse: collapse; margin-top: 16px; font-size: 13.5px; }
+.denials th { text-align: left; font-weight: 500; color: var(--ink-3); font-size: 12.5px; padding: 6px 12px 6px 0; border-bottom: 1px solid var(--rule); }
+.denials td { padding: 10px 12px 10px 0; border-bottom: 1px solid var(--rule); vertical-align: top; overflow-wrap: anywhere; }
+details.audit { margin-top: 36px; font-size: 13.5px; color: var(--ink-2); }
+details.audit summary { cursor: pointer; font-weight: 500; }
+.calls { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 12px; }
+.calls code { background: var(--surface); border: 1px solid var(--rule); border-radius: var(--r-code); padding: 3px 8px; }
+
+dialog { border: 1px solid var(--rule-2); border-radius: var(--r-panel); background: var(--surface); color: var(--ink); padding: 26px; max-width: 520px; width: calc(100% - 32px); }
+dialog::backdrop { background: rgb(14 19 24 / .45); }
+dialog h2 { font-size: 20px; font-weight: 600; }
+dialog p, dialog li { color: var(--ink-2); font-size: 14.5px; }
+dialog ul { padding-left: 18px; }
+dialog .row { display: flex; gap: 10px; justify-content: flex-end; margin-top: 22px; flex-wrap: wrap; }
+dialog label { display: flex; gap: 8px; align-items: center; font-size: 14px; margin-top: 8px; }
+
+/* ---------- responsive ---------- */
+@media (max-width: 1080px) {
+  .change { grid-template-columns: 1fr; }
+  .actions { position: static; }
+}
+@media (max-width: 860px) {
+  .shell { grid-template-columns: minmax(0, 1fr); }
+  .top { position: static; }
+  .rail { border-right: 0; border-bottom: 1px solid var(--rule); padding: 20px 16px; }
+  main { padding: 26px 16px 60px; }
+  .top { padding: 12px 16px; }
+  .brand span { display: none; }
+  .verdict h1, .welcome h1 { font-size: 28px; }
+  .lane { grid-template-columns: 1fr; gap: 10px; padding: 16px; }
+  .lane-out { text-align: left; }
+  .steps-intro { grid-template-columns: 1fr; }
+  .rung { grid-template-columns: 1fr; gap: 4px; }
+  .rung .where { text-align: left; }
+  .rung .state { grid-column: auto; margin: 0; }
+  .findings li { grid-template-columns: 1fr; gap: 4px; }
+}
+</style>
+</head>
+<body>
+<header class="top">
+  <a class="brand" href="/" aria-label="pipefix console home">
+    <svg viewBox="0 0 34 22" aria-hidden="true"><path d="M1 21 Q5 1 9 21" fill="none" stroke="var(--A)" stroke-width="2.4" stroke-linecap="round"/><path d="M8 21 Q12 8 16 21" fill="none" stroke="var(--C)" stroke-width="2.4" stroke-linecap="round"/><path d="M15 21 Q19 12 23 21" fill="none" stroke="var(--G)" stroke-width="2.4" stroke-linecap="round"/><path d="M22 21 Q27 3 32 21" fill="none" stroke="var(--T)" stroke-width="2.4" stroke-linecap="round"/></svg>
+    <b>pipefix</b><span id="ver"></span>
+  </a>
+  <div class="conn" id="conn" role="status"><i></i><span>Checking AWS access</span></div>
+  <button class="iconbtn" id="theme" type="button" aria-label="Switch light or dark theme" title="Theme">
+    <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="6.2" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M8 1.8a6.2 6.2 0 0 1 0 12.4z" fill="currentColor"/></svg>
+  </button>
+</header>
+
+<div class="shell">
+  <aside class="rail">
+    <section aria-labelledby="new-h">
+      <h2 id="new-h">Investigate a failed run</h2>
+      <div class="seg" role="radiogroup" aria-label="Where the run failed" id="modes">
+        <button type="button" role="radio" data-mode="batch-queue" aria-checked="true">Batch queue</button>
+        <button type="button" role="radio" data-mode="batch-jobs" aria-checked="false">Batch jobs</button>
+        <button type="button" role="radio" data-mode="omics-run" aria-checked="false">HealthOmics run</button>
+        <button type="button" role="radio" data-mode="demo" aria-checked="false">Demo</button>
+      </div>
+      <form id="form" autocomplete="off">
+        <div class="field" id="f-value">
+          <label for="value" id="value-label">Queue name</label>
+          <input id="value" class="code" placeholder="spot-queue">
+          <small id="value-hint">pipefix finds the jobs that failed in this queue.</small>
+        </div>
+        <div class="field" id="f-since">
+          <label for="since">Look back</label>
+          <select id="since"><option value="6">6 hours</option><option value="24" selected>24 hours</option><option value="72">3 days</option><option value="168">7 days</option></select>
+        </div>
+        <div class="field" id="f-repo">
+          <label for="repo">Pipeline repo folder</label>
+          <input id="repo" class="code" placeholder="C:\src\my-pipeline">
+          <small>Used to trace settings and write the fix. Leave empty to only diagnose.</small>
+        </div>
+        <details class="more" id="f-more">
+          <summary>AWS profile, region and Nextflow profiles</summary>
+          <div class="field"><label for="profile">AWS profile</label><input id="profile" class="code" placeholder="default"></div>
+          <div class="field"><label for="region">Region</label><input id="region" class="code" placeholder="from your AWS config"></div>
+          <div class="field"><label for="nfp">Nextflow profiles the run used</label><input id="nfp" class="code" placeholder="awsbatch"></div>
+        </details>
+        <p class="note" id="demo-note" hidden>Runs against a built-in example account with four failed tasks and an nf-core style pipeline. Nothing touches AWS or your files.</p>
+        <button class="btn primary run-btn" id="run" type="submit">Investigate</button>
+        <p class="note">Read-only in AWS. pipefix only changes your repo when you choose Write changes or Open merge request.</p>
+      </form>
+    </section>
+    <section class="history" aria-labelledby="hist-h">
+      <h2 id="hist-h">This session</h2>
+      <ul id="history"><li class="empty">Investigations you run appear here.</li></ul>
+    </section>
+  </aside>
+
+  <main id="main" tabindex="-1" aria-live="polite"></main>
+</div>
+
+<dialog id="mr-dialog" aria-labelledby="mr-h">
+  <h2 id="mr-h">Open a merge request</h2>
+  <p>pipefix will:</p>
+  <ul id="mr-steps"></ul>
+  <label><input type="checkbox" id="mr-ready"> Open it ready for review instead of as a draft</label>
+  <div class="row">
+    <button class="btn" type="button" id="mr-cancel">Cancel</button>
+    <button class="btn go" type="button" id="mr-go">Open merge request</button>
+  </div>
+</dialog>
+
+<template id="welcome">
+  <div class="welcome">
+    <h1>Find out why a pipeline run failed, and fix it with one merge request.</h1>
+    <p>pipefix reads the failed tasks from AWS, works out which setting in your pipeline caused each failure, and proposes the smallest config change that fixes it. Failures that config can't fix are explained, with the evidence.</p>
+    <svg class="trace" id="trace" viewBox="0 0 640 86" aria-hidden="true"></svg>
+    <button class="btn primary" type="button" id="try-demo">Try the demo</button>
+    <div class="steps-intro">
+      <div><b>Reads the run</b>Batch jobs or the HealthOmics run, every attempt, logs, the task's work folder, and the machines it ran on.</div>
+      <div><b>Traces the setting</b>Follows nextflow.config and its includes to the exact file and line that set memory, time or queue.</div>
+      <div><b>Proposes the fix</b>A scoped change to the failed processes, shown as a diff, ready to open as a merge request.</div>
+    </div>
+  </div>
+</template>
+
+<script>
+"use strict";
+const TOKEN = document.querySelector('meta[name="pipefix-token"]').content;
+const $ = (s, el = document) => el.querySelector(s);
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const ticks = s => esc(s).replace(/`([^`]+)`/g, "<code>$1</code>");
+const store = { get(k) { try { return localStorage.getItem(k); } catch { return null; } },
+                set(k, v) { try { localStorage.setItem(k, v); } catch {} } };
+
+/* ---------- theme ---------- */
+(function () {
+  const t = store.get("pipefix-theme");
+  if (t) document.documentElement.dataset.theme = t;
+  $("#theme").addEventListener("click", () => {
+    const dark = getComputedStyle(document.documentElement).colorScheme.includes("dark");
+    const next = dark ? "light" : "dark";
+    document.documentElement.dataset.theme = next;
+    store.set("pipefix-theme", next);
+  });
+})();
+
+/* ---------- API ---------- */
+async function api(path, body) {
+  const opt = body === undefined ? {} : { method: "POST", headers: { "Content-Type": "application/json", "X-Pipefix-Token": TOKEN }, body: JSON.stringify(body) };
+  const r = await fetch(path, opt);
+  const data = await r.json().catch(() => ({ error: `The console answered ${r.status}.` }));
+  if (!r.ok) throw new Error(data.error || `Request failed (${r.status}).`);
+  return data;
+}
+
+/* ---------- status ---------- */
+let STATUS = {};
+async function loadStatus() {
+  try {
+    STATUS = await api("/api/status");
+    $("#ver").textContent = "v" + STATUS.version;
+    const c = $("#conn"), a = STATUS.aws || {};
+    if (a.state === "checking") { setTimeout(loadStatus, 1500); return; }
+    c.classList.toggle("ok", a.state === "ok");
+    c.classList.toggle("bad", a.state !== "ok");
+    c.querySelector("span").textContent = a.state === "ok"
+      ? `AWS ${a.region}, ${a.identity.split("/").pop()}`
+      : "No AWS access, demo only";
+    c.title = a.state === "ok" ? a.identity : (a.detail || "");
+    if (STATUS.cwd_is_pipeline && !$("#repo").value) $("#repo").value = STATUS.cwd;
+    if (a.state !== "ok" && !store.get("pipefix-mode")) setMode("demo");
+  } catch (e) { $("#conn span").textContent = "Console not reachable"; }
+}
+
+/* ---------- form ---------- */
+const MODES = {
+  "batch-queue": { label: "Queue name", ph: "spot-queue", hint: "pipefix finds the jobs that failed in this queue." },
+  "batch-jobs": { label: "Job ids", ph: "3f1c2a9e-1b7d-4c55-…", hint: "One or more AWS Batch job ids, separated by spaces." },
+  "omics-run": { label: "Run id", ph: "1234567", hint: "The id of the failed HealthOmics run." },
+  "demo": {},
+};
+let MODE = "batch-queue";
+function setMode(m) {
+  MODE = m; store.set("pipefix-mode", m);
+  for (const b of document.querySelectorAll("#modes button")) b.setAttribute("aria-checked", String(b.dataset.mode === m));
+  const demo = m === "demo";
+  $("#f-value").hidden = demo; $("#f-repo").hidden = demo; $("#f-more").hidden = demo;
+  $("#f-since").hidden = m !== "batch-queue"; $("#demo-note").hidden = !demo;
+  $("#run").textContent = demo ? "Run the demo" : "Investigate";
+  if (!demo) { const d = MODES[m]; $("#value-label").textContent = d.label; $("#value").placeholder = d.ph; $("#value-hint").textContent = d.hint; }
+}
+$("#modes").addEventListener("click", e => { const b = e.target.closest("button"); if (b) setMode(b.dataset.mode); });
+$("#modes").addEventListener("keydown", e => {
+  if (!["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown"].includes(e.key)) return;
+  const bs = [...document.querySelectorAll("#modes button")], i = bs.findIndex(b => b.dataset.mode === MODE);
+  const n = bs[(i + (e.key === "ArrowLeft" || e.key === "ArrowUp" ? -1 : 1) + bs.length) % bs.length];
+  setMode(n.dataset.mode); n.focus(); e.preventDefault();
+});
+for (const id of ["repo", "profile", "region", "nfp"]) {
+  const v = store.get("pipefix-" + id); if (v) $("#" + id).value = v;
+  $("#" + id).addEventListener("change", e => store.set("pipefix-" + id, e.target.value));
+}
+setMode(store.get("pipefix-mode") || "batch-queue");
+
+$("#form").addEventListener("submit", async e => {
+  e.preventDefault();
+  const req = { mode: MODE, value: $("#value").value, since: $("#since").value, repo: $("#repo").value,
+                profile: $("#profile").value, region: $("#region").value,
+                nf_profiles: $("#nfp").value.split(/[\s,]+/).filter(Boolean) };
+  if (MODE !== "demo" && !req.value.trim()) { $("#value").focus(); $("#value").setCustomValidity("Enter a value first."); $("#value").reportValidity(); return; }
+  $("#value").setCustomValidity("");
+  $("#run").disabled = true;
+  try { const { id } = await api("/api/investigate", req); CURRENT = id; poll(id); refreshHistory(); }
+  catch (err) { showError("pipefix couldn't start the investigation", err.message); }
+  finally { $("#run").disabled = false; }
+});
+$("#value").addEventListener("input", e => e.target.setCustomValidity(""));
+
+/* ---------- history ---------- */
+let CURRENT = null;
+async function refreshHistory() {
+  const jobs = await api("/api/jobs").catch(() => []);
+  const ul = $("#history");
+  if (!jobs.length) { ul.innerHTML = '<li class="empty">Investigations you run appear here.</li>'; return; }
+  ul.innerHTML = jobs.map(j => {
+    const bars = j.failures == null ? "" : Array.from({ length: Math.min(j.failures, 8) }, (_, i) => `<i class="${i < j.fixed ? "fx" : "nd"}"></i>`).join("");
+    const when = new Date(j.created).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+    const sub = j.status === "running" ? "Running" : j.status === "failed" ? "Couldn't finish" :
+      `${j.failures} failed, ${j.fixed} fixable`;
+    return `<li><button type="button" data-id="${j.id}" aria-current="${j.id === CURRENT}"><span>${esc(j.label)}</span><span class="tally" aria-hidden="true">${bars}</span><span class="when">${when}, ${sub}</span></button></li>`;
+  }).join("");
+}
+$("#history").addEventListener("click", e => { const b = e.target.closest("button[data-id]"); if (b) { CURRENT = b.dataset.id; poll(CURRENT); refreshHistory(); } });
+
+/* ---------- views ---------- */
+const main = $("#main");
+function chromatogram(svg) {
+  // A sequencing trace: one peak per base, overlapping like a real read. One base fails: the tall red peak.
+  const seq = "ACGTTGCAAGCTGACTTAGCGATCGA", base = 80, w = 24.6, colors = { A: "A", C: "C", G: "G", T: "T" };
+  let paths = "", x = 8;
+  [...seq].forEach((b, i) => {
+    const h = i === 13 ? 74 : 22 + ((i * 37) % 41), x0 = x - w * 0.9, x1 = x + w * 0.9;
+    const d = `M${x0} ${base} C${x - w * 0.35} ${base} ${x - w * 0.35} ${base - h} ${x} ${base - h} S${x + w * 0.35} ${base} ${x1} ${base}`;
+    paths += `<path d="${d}" fill="none" stroke="var(--${colors[b]})" stroke-width="${i === 13 ? 2.6 : 1.7}" stroke-linecap="round" opacity="${i === 13 ? 1 : .85}"/>`;
+    x += w;
+  });
+  svg.innerHTML = paths + `<line x1="0" y1="${base + .5}" x2="640" y2="${base + .5}" stroke="var(--rule-2)"/>`;
+}
+function showWelcome() {
+  main.innerHTML = ""; main.append($("#welcome").content.cloneNode(true));
+  chromatogram($("#trace"));
+  $("#try-demo").addEventListener("click", () => { setMode("demo"); $("#form").requestSubmit(); });
+}
+function showError(title, msg) {
+  main.innerHTML = `<div class="errorbox"><h1>${esc(title)}</h1><pre>${esc(msg)}</pre>
+    <p class="note">Check the AWS profile and region under "AWS profile, region and Nextflow profiles", or try the demo to see the full flow.</p></div>`;
+}
+function showProgress(job) {
+  main.innerHTML = `<div class="progress"><h1>Investigating ${esc(job.label.toLowerCase().startsWith("demo") ? "the demo run" : job.label)}</h1>
+    <ol>${job.stages.map(s => `<li class="${s.state}"><span class="st" aria-hidden="true"></span><span>${esc(s.name)}<span class="sr"> (${s.state})</span></span></li>`).join("")}</ol></div>`;
+}
+
+async function poll(id) {
+  let job;
+  try { job = await api("/api/jobs/" + id); } catch (e) { return showError("pipefix lost track of this investigation", e.message); }
+  if (id !== CURRENT) return;
+  if (job.status === "running") { showProgress(job); setTimeout(() => poll(id), 500); return; }
+  refreshHistory();
+  if (job.status === "failed") return showError("The investigation stopped", job.error);
+  render(job);
+}
+
+/* ---------- the result ---------- */
+let SEL = 0, TAB = "evidence", JOB = null;
+const CLS_COLOR = { out_of_memory: "T", spot_interruption: "C", timeout: "G", disk_full: "G", container_error: "T",
+                    reference_error: "G", permission_denied: "T", capacity: "G", unknown: "ink-3" };
+
+function render(job) {
+  JOB = job; const r = job.result; SEL = Math.min(SEL, Math.max(0, r.failures.length - 1));
+  const n = r.failures.length, fixed = r.failures.filter(f => f.fixed).length, you = n - fixed;
+  const plat = { "aws-batch": "AWS Batch", healthomics: "AWS HealthOmics", files: "Nextflow files" }[r.platform] || r.platform;
+  const headline = n === 0 ? "Nothing failed in this window." :
+    `${n} ${n === 1 ? "task" : "tasks"} failed. ` + (fixed && you ? `${fixed} ${fixed === 1 ? "has" : "have"} a config fix; ${you} ${you === 1 ? "needs" : "need"} you.`
+      : fixed ? (n === 1 ? "It has a config fix." : "All have a config fix.") : (n === 1 ? "It needs you; config can't fix it." : "They need you; config can't fix them."));
+  main.innerHTML = `
+    <header class="verdict">
+      <div class="runref"><span><b>${esc(plat)}</b></span><span>${esc(r.run)}</span>${r.nextflow ? `<span>Nextflow ${esc(r.nextflow)}</span>` : ""}${r.repo ? `<span class="mono">${esc(r.repo)}</span>` : ""}</div>
+      <h1>${esc(headline)}</h1>
+      ${n ? `<div class="key" aria-hidden="true">
+        <span><i style="background:var(--T)"></i>Peak memory used</span>
+        <span><i style="background:var(--ink-2)"></i>Requested</span>
+        <span><i style="background:var(--A)"></i>After the fix</span>
+        <span><i style="background:none;border-top:2px dashed var(--C);height:0"></i>Largest instance in the queue</span>
+        <span><i style="background:none;border-top:2px dashed var(--G);height:0"></i>Pipeline cap</span></div>` : ""}
+    </header>
+    ${n ? `<section class="lanes fresh" id="lanes" aria-label="Failed tasks">${r.failures.map(lane).join("")}</section>` : ""}
+    ${n ? `<section class="section" id="detail" aria-live="polite"></section>` : ""}
+    <section class="section" aria-labelledby="chg-h">
+      <h2 id="chg-h">Proposed change</h2>
+      ${changeBlock(r, job)}
+    </section>
+    ${platformBlock(r)}
+    <details class="audit"><summary>What pipefix read: ${r.calls.reduce((a, c) => a + c.count, 0)} read-only AWS calls</summary>
+      <div class="calls">${r.calls.map(c => `<code>${esc(c.call)}${c.count > 1 ? " ×" + c.count : ""}</code>`).join("")}</div>
+      ${r.errors.length ? `<p>Not readable or not found: ${r.errors.map(esc).join(", ")}.</p>` : ""}
+      ${r.config_files.length ? `<p>Config files traced: ${r.config_files.map(f => `<code>${esc(f)}</code>`).join(" ")}</p>` : ""}
+    </details>`;
+  if (n) {
+    declutter();
+    $("#lanes").addEventListener("click", e => { const b = e.target.closest(".lane"); if (b) select(+b.dataset.i); });
+    renderDetail();
+    setTimeout(() => $("#lanes")?.classList.remove("fresh"), 1200);
+  }
+  wireActions(job);
+}
+
+function lane(f) {
+  const color = CLS_COLOR[f.cls] || "ink-3";
+  return `<button class="lane" type="button" data-i="${f.id}" aria-pressed="${f.id === SEL}">
+    <div class="lane-name"><strong>${esc(f.name)}</strong>${f.tag ? `<span>${esc(f.tag)}</span>` : ""}
+      <div class="lane-cls"><span class="dot" style="background:var(--${color})"></span>${esc(f.label)}</div></div>
+    <div class="lane-viz">${viz(f)}</div>
+    <div class="lane-out ${f.fixed ? "fixed" : "you"}"><b>${f.fixed ? "Config fix" : "Needs you"}</b><small>${Math.round(f.confidence * 100)}% confident</small></div>
+  </button>`;
+}
+
+function marksHTML(marks, max) {
+  // place tags above/below, alternating when two would collide
+  marks = marks.filter(m => m.v != null).sort((a, b) => a.v - b.v);
+  let lastUp = -1e9, lastDown = -1e9, out = "";
+  for (const m of marks) {
+    const x = Math.max(0.5, Math.min(99.5, m.v / max * 100));
+    out += `<span class="band ${m.k}" style="left:${x}%"></span>`;
+    let row = m.row || (x - lastUp > 14 ? "up" : "down");
+    if (row === "down" && x - lastDown < 14 && x - lastUp > 14) row = "up";
+    if (row === "up") lastUp = x; else lastDown = x;
+    const edge = x > 88 ? " edge-r" : x < 8 ? " edge-l" : "";
+    out += `<span class="tag ${m.k} ${row}${edge}" style="left:${x}%">${esc(m.t)}</span>`;
+  }
+  return out;
+}
+
+function viz(f) {
+  if (f.cls === "spot_interruption") {
+    const n = Math.max(f.spot_reclaims, 1), per = f.runtime_h ? (f.runtime_h / Math.max(f.attempts, 1)) : null;
+    return `<div><div class="attempts">${Array.from({ length: n }, () => `<span class="att"></span>`).join("")}${f.new_queue ? `<span class="att next" title="Next attempt"></span>` : ""}</div>
+      <div class="att-caption">${n} of ${f.attempts} attempts reclaimed by Spot${per ? `, about ${per.toFixed(1)} h each` : ""}${f.new_queue ? `; next runs on ${esc(f.new_queue)}` : ""}</div></div>`;
+  }
+  if (f.cls === "out_of_memory" && (f.memory_gb || f.peak_gb)) {
+    const vals = [f.memory_gb, f.peak_gb, f.new_memory_gb, f.ceiling_gb, f.cap_gb].filter(v => v != null);
+    const max = Math.max(...vals) * 1.06;
+    const used = f.peak_gb ? `<span class="used" style="width:${f.peak_gb / max * 100}%"></span>` : "";
+    return `<div class="track" role="img" aria-label="${esc(`Requested ${f.memory_gb ?? "?"} GB, peak ${f.peak_gb ?? "unknown"} GB${f.new_memory_gb ? `, after the fix ${f.new_memory_gb} GB` : ""}${f.ceiling_gb ? `, largest instance ${f.ceiling_gb} GB` : ""}`)}">
+      <span class="gel"></span>${used}${marksHTML([
+        { k: "had", v: f.memory_gb, t: `had ${fmt(f.memory_gb)} GB`, row: "down" },
+        { k: "peak", v: f.peak_gb, t: `used ${fmt(f.peak_gb)} GB`, row: "up" },
+        { k: "new", v: f.new_memory_gb, t: `now ${fmt(f.new_memory_gb)} GB` },
+        { k: "ceil", v: f.ceiling_gb, t: `instance max ${fmt(f.ceiling_gb)} GB` },
+        { k: "cap", v: f.cap_gb, t: `cap ${fmt(f.cap_gb)} GB` }], max)}</div>`;
+  }
+  if (f.cls === "timeout" && (f.time_h || f.runtime_h)) {
+    const max = Math.max(f.time_h || 0, f.runtime_h || 0, f.new_time_h || 0) * 1.06;
+    return `<div class="track"><span class="gel"></span>${f.runtime_h ? `<span class="used" style="width:${f.runtime_h / max * 100}%"></span>` : ""}${marksHTML([
+      { k: "had", v: f.time_h, t: `limit ${fmt(f.time_h)} h`, row: "down" }, { k: "peak", v: f.runtime_h, t: `ran ${fmt(f.runtime_h)} h`, row: "up" },
+      { k: "new", v: f.new_time_h, t: `now ${fmt(f.new_time_h)} h` }], max)}</div>`;
+  }
+  const key = (f.evidence.find(e => /ECR|CloudTrail/.test(e)) || f.evidence[0] || f.explanation || "").replace(/^log: /, "").replace(/`/g, "");
+  return `<div class="cause"><code title="${esc(key)}">${esc(key)}</code></div>`;
+}
+function declutter() {
+  // Measure the real label widths and move any label that would overlap a neighbour to a free row.
+  for (const tr of document.querySelectorAll(".track")) {
+    tr.classList.remove("tall");
+    const tags = [...tr.querySelectorAll(".tag")];
+    tags.forEach(t => { t.classList.remove("down2"); });
+    const placed = { up: [], down: [], down2: [] };
+    const tagsByX = tags.map(t => ({ t, r: t.getBoundingClientRect() })).sort((a, b) => a.r.left - b.r.left);
+    for (const { t } of tagsByX) {
+      const want = t.classList.contains("up") ? "up" : "down";
+      const r = t.getBoundingClientRect();
+      const free = row => placed[row].every(p => r.left > p.right + 6 || r.right < p.left - 6);
+      const row = [want, want === "up" ? "down" : "up", "down2"].find(free) || "down2";
+      t.classList.remove("up", "down"); t.classList.add(row === "down2" ? "down" : row);
+      if (row === "down2") { t.classList.add("down2"); tr.classList.add("tall"); }
+      placed[row].push(r);
+    }
+  }
+}
+let _rz; addEventListener("resize", () => { clearTimeout(_rz); _rz = setTimeout(declutter, 120); });
+const fmt = v => v == null ? "?" : (Math.round(v * 10) / 10).toString();
+
+function select(i) {
+  SEL = i;
+  for (const b of document.querySelectorAll(".lane")) b.setAttribute("aria-pressed", String(+b.dataset.i === i));
+  renderDetail();
+}
+
+function renderDetail() {
+  const f = JOB.result.failures[SEL], el = $("#detail");
+  const tabs = [["evidence", "Evidence"], ["trace", "Where the setting comes from"], ["log", "Log"]];
+  el.innerHTML = `
+    <div class="detail-head">
+      <div><h2>${esc(f.display)}</h2><p class="lede" style="color:var(--ink-2);margin:6px 0 0;max-width:72ch">${ticks(f.explanation)}</p></div>
+      <div class="conf"><b>${Math.round(f.confidence * 100)}%</b><small>confidence</small><div class="meter"><i style="width:${f.confidence * 100}%"></i></div></div>
+    </div>
+    <div class="tabs" role="tablist">${tabs.map(([k, t]) => `<button type="button" role="tab" id="tab-${k}" aria-controls="panel" aria-selected="${TAB === k}" data-tab="${k}" tabindex="${TAB === k ? 0 : -1}">${t}</button>`).join("")}</div>
+    <div class="panel" id="panel" role="tabpanel" aria-labelledby="tab-${TAB}">${panel(f)}</div>`;
+  $(".tabs", el).addEventListener("click", e => { const b = e.target.closest("button"); if (b) { TAB = b.dataset.tab; renderDetail(); $(`#tab-${TAB}`).focus(); } });
+  $(".tabs", el).addEventListener("keydown", e => {
+    if (e.key !== "ArrowRight" && e.key !== "ArrowLeft") return;
+    const i = tabs.findIndex(t => t[0] === TAB); TAB = tabs[(i + (e.key === "ArrowRight" ? 1 : tabs.length - 1)) % tabs.length][0];
+    renderDetail(); $(`#tab-${TAB}`).focus();
+  });
+}
+
+function panel(f) {
+  if (TAB === "evidence") {
+    const facts = [["Exit code", f.exit_code], ["Attempts", f.attempts], ["Job", f.job_ref], ["Image", f.image],
+                   ["Defined in", f.defined_in], ["Labels", (f.labels || []).join(", ")], ["Work folder", f.work_dir],
+                   ["Name from", f.name_source]].filter(([, v]) => v !== null && v !== undefined && v !== "");
+    return `<ul class="evidence">${f.evidence.map(e => `<li><span>${ticks(e.replace(/^log: /, "Log: "))}</span></li>`).join("")}</ul>
+      ${f.fixed ? `<div class="rec fixed"><b>What the fix does</b><ul>${f.fix.notes.map(n => `<li>${ticks(n.replace(/^pipefix: /, ""))}</li>`).join("")}</ul></div>`
+                : `<div class="rec"><b>What to do: </b>${ticks(f.recommendation)}</div>`}
+      <dl class="facts">${facts.map(([k, v]) => `<div><dt>${esc(k)}</dt><dd class="${/Job|Image|Defined|Work/.test(k) ? "mono" : ""}">${esc(v)}</dd></div>`).join("")}</dl>`;
+  }
+  if (TAB === "trace") {
+    if (!f.trace.length && !f.fix) return `<p class="note">No pipeline settings were traced for this process. ${JOB.result.repo ? "It isn't defined in this repo, or the repo has no nextflow.config." : "Choose a pipeline repo folder to trace settings."}</p>`;
+    const LV = { generic: "process {}", script: "process script", withLabel: "withLabel", withName: "withName" };
+    const dirs = [...new Set([...Object.keys(f.fix?.settings || {}), ...f.trace.map(t => t.directive)])]
+      .filter(d => ["memory", "time", "queue", "maxRetries", "errorStrategy"].includes(d));
+    return `<div class="ladder">${dirs.map(d => {
+      const rows = f.trace.filter(t => t.directive === d).slice().reverse();
+      const next = f.fix?.settings?.[d];
+      return `<div><h3>${esc(d)}</h3>
+        ${next ? `<div class="rung next"><span class="lvl">pipefix</span><code>withName: '${esc(f.name)}'</code><code>${esc(next)}</code><span class="where">conf/pipefix.config</span><span class="state">After merge, this wins</span></div>` : ""}
+        ${rows.map(t => `<div class="rung ${t.wins && !next ? "now" : "over"}${t.wins && next ? " now" : ""}"><span class="lvl">${esc(LV[t.level] || t.level)}</span><code>${esc(t.selector === "process" ? "process" : t.selector)}</code><code>${esc(t.value)}</code><span class="where">${esc(t.where)}</span>${t.wins ? `<span class="state">${next ? "In effect now; replaced by the fix" : "In effect now"}</span>` : ""}</div>`).join("")}
+      </div>`; }).join("")}</div>
+      <p class="note">Highest precedence first, as Nextflow applies it: withName, then withLabel, then the process script, then the generic process block.</p>`;
+  }
+  const hit = /error|exception|denied|killed|not found|outofmemory|terminated|fail|cannot|couldn't/i;
+  return f.log.length ? `<pre class="log mono">${f.log.map(l => hit.test(l) ? `<span class="hit">${esc(l)}</span>` : esc(l)).join("\n")}</pre>`
+    : `<p class="note">No log lines were readable for this task.</p>`;
+}
+
+function changeBlock(r, job) {
+  if (!r.diff) {
+    return `<div class="nochange">No pipeline config change is safe to make for this run. ${r.failures.length ? "The failures below need a change outside the pipeline: IAM, images, inputs or compute environments. Each one says what to do." : ""}</div>`;
+  }
+  const files = [], cur = [];
+  for (const line of r.diff.split("\n")) {
+    if (line.startsWith("--- ")) continue;
+    if (line.startsWith("+++ ")) { files.push({ name: line.slice(6), lines: [] }); continue; }
+    if (files.length) files[files.length - 1].lines.push(line);
+  }
+  const fileHTML = files.map(fl => {
+    const add = fl.lines.filter(l => l.startsWith("+")).length;
+    return `<div class="diff"><div class="file"><span style="color:var(--ink)">${esc(fl.name)}</span><span>+${add}</span></div><pre class="mono">${fl.lines.filter(l => l !== "").map(l => {
+      const k = l.startsWith("@@") ? "hunk" : l.startsWith("+") ? "add" : l.startsWith("-") ? "del" : "";
+      const cm = /^\s*[+-]?\s*\/\//.test(l) ? " cm" : "";
+      return `<span class="ln ${k}${cm}">${esc(l)}</span>`;
+    }).join("")}</pre></div>`;
+  }).join('<div style="height:14px"></div>');
+  const tok = STATUS.github_token || STATUS.gitlab_token;
+  return `<p class="lede">${esc(r.title)}. Only the failed processes change, in a file included last in nextflow.config.</p>
+    <div class="change"><div>${fileHTML}</div>
+      <div class="actions">
+        <button class="btn" type="button" id="act-write" ${job.written ? "disabled" : ""}>${job.written ? "Changes written" : "Write changes"}</button>
+        <button class="btn go" type="button" id="act-mr" ${job.mr ? "disabled" : ""}>${job.mr ? "Merge request opened" : "Open merge request"}</button>
+        <button class="btn" type="button" id="act-copy">Copy description</button>
+        <p>${job.kind === "demo" ? "The demo writes to a temporary copy of the example pipeline, which has no remote, so it can't open a merge request." :
+          tok ? `Writes to <span class="mono">${esc(r.repo)}</span>. Merge requests go to the repo's origin remote.` :
+          "To open merge requests, start the console with GITHUB_TOKEN (or GITLAB_TOKEN) set."}</p>
+        <div id="act-msg" aria-live="polite">${job.mr ? `<div class="result-msg ok">Merge request: <a href="${esc(job.mr.url)}" target="_blank" rel="noopener">${esc(job.mr.url)}</a></div>` :
+          job.written ? `<div class="result-msg ok">Wrote ${job.written.map(w => `<code>${esc(w)}</code>`).join(", ")}.</div>` : ""}</div>
+      </div></div>`;
+}
+
+function platformBlock(r) {
+  if (!r.findings.length && !r.denials.length) return "";
+  const order = { block: 0, warn: 1, info: 2 }, name = { block: "Blocker", warn: "Warning", info: "Fact" };
+  const fs = r.findings.slice().sort((a, b) => order[a.severity] - order[b.severity]);
+  return `<section class="section" aria-labelledby="plat-h"><h2 id="plat-h">What pipefix found on the platform</h2>
+    <p class="lede">Facts from AWS and your config that shaped the fix, and anything blocking it.</p>
+    <ul class="findings">${fs.map(f => `<li><span class="sev ${f.severity}">${name[f.severity]}</span><div><b>${ticks(f.title)}</b><p>${ticks(f.detail)}</p></div></li>`).join("")}</ul>
+    ${r.denials.length ? `<div style="overflow-x:auto"><table class="denials"><caption class="sr">Access denied in CloudTrail during the run</caption>
+      <thead><tr><th>Denied action</th><th>Resource</th><th>Role</th><th>When</th></tr></thead>
+      <tbody>${r.denials.map(d => `<tr><td class="mono">${esc(d.source.split(".")[0])}:${esc(d.action)}</td><td class="mono">${esc(d.target)}</td><td class="mono">${esc((d.principal.split("/")[1]) || d.principal)}</td><td>${esc(d.time)}</td></tr>`).join("")}</tbody></table></div>` : ""}
+  </section>`;
+}
+
+function wireActions(job) {
+  const msg = t => { $("#act-msg").innerHTML = t; };
+  $("#act-copy")?.addEventListener("click", async () => {
+    try { await navigator.clipboard.writeText(job.result.description); msg('<div class="result-msg ok">Description copied.</div>'); }
+    catch { msg('<div class="result-msg err">The browser blocked the clipboard. Use the report in the CLI with --report instead.</div>'); }
+  });
+  $("#act-write")?.addEventListener("click", async e => {
+    e.target.disabled = true;
+    try { const r = await api(`/api/jobs/${job.id}/apply`, {}); job.written = r.written; e.target.textContent = "Changes written";
+          msg(`<div class="result-msg ok">Wrote ${r.written.map(w => `<code>${esc(w)}</code>`).join(", ")} in <span class="mono">${esc(r.repo)}</span>.</div>`); }
+    catch (err) { e.target.disabled = false; msg(`<div class="result-msg err">${esc(err.message)}</div>`); }
+  });
+  $("#act-mr")?.addEventListener("click", () => {
+    $("#mr-steps").innerHTML = [`create a branch <code>pipefix/fix-…</code> in <span class="mono">${esc(job.result.repo)}</span>`,
+      `commit ${job.result.files.map(f => `<code>${esc(f)}</code>`).join(" and ")}`, "push it to the origin remote",
+      "open the merge request with the evidence, the config trace and the platform findings"].map(s => `<li>${s}</li>`).join("");
+    $("#mr-dialog").showModal();
+  });
+}
+$("#mr-cancel").addEventListener("click", () => $("#mr-dialog").close());
+$("#mr-go").addEventListener("click", async () => {
+  const btn = $("#mr-go"); btn.disabled = true; btn.textContent = "Opening";
+  try {
+    const r = await api(`/api/jobs/${JOB.id}/open-mr`, { ready: $("#mr-ready").checked });
+    JOB.mr = r; $("#mr-dialog").close();
+    $("#act-mr").disabled = true; $("#act-mr").textContent = "Merge request opened";
+    $("#act-msg").innerHTML = `<div class="result-msg ok">${r.existing ? "An open merge request already proposes this change: " : "Opened "}<a href="${esc(r.url)}" target="_blank" rel="noopener">${esc(r.url)}</a></div>`;
+  } catch (err) {
+    $("#mr-dialog").close();
+    $("#act-msg").innerHTML = `<div class="result-msg err">${esc(err.message)}</div>`;
+  } finally { btn.disabled = false; btn.textContent = "Open merge request"; }
+});
+
+showWelcome();
+loadStatus();
+refreshHistory();
+</script>
+</body>
+</html>

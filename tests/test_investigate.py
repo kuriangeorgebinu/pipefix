@@ -21,7 +21,7 @@ GiB = 1024**3
 @pytest.fixture
 def repo(tmp_path):
     dst = tmp_path / "sarek-mini"
-    shutil.copytree(EX / "sarek-mini", dst)
+    shutil.copytree(Path(__file__).resolve().parent.parent / "pipefix" / "demo" / "pipeline", dst)
     return dst
 
 
@@ -91,7 +91,7 @@ def test_batch_spot_moves_to_ondemand_queue_and_resolves_name(repo):
     cfg = patch.files[CONFIG_REL][1]
     assert "aws.batch.maxSpotAttempts = 3" in cfg
     assert "withName: 'STAR_ALIGN'" in cfg and "queue      = 'ondemand-queue'" in cfg
-    assert any(fd.title == "Process name is approximate" for fd in inv.findings)
+    assert any(fd.title == "Process matched from the job name" and fd.severity == "info" for fd in inv.findings)
 
 
 def test_batch_memory_already_at_instance_limit_is_not_fixed_by_config(repo):

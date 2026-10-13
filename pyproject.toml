@@ -21,5 +21,8 @@ pipefix = "pipefix.cli:main"
 [tool.setuptools.packages.find]
 include = ["pipefix*"]
 
+[tool.setuptools.package-data]
+pipefix = ["ui/static/*", "ui/static/fonts/*", "demo/pipeline/**/*", "demo/pipeline/*"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]

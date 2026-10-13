@@ -131,7 +131,15 @@ def main(argv: list[str] | None = None) -> int:
     outputs(s, True)
     s._option_string_actions["--repo"].required = False
 
+    s = sub.add_parser("ui", help="open the pipefix console in your browser")
+    s.add_argument("--port", type=int, default=8787)
+    s.add_argument("--no-browser", action="store_true")
+
     a = p.parse_args(argv)
+    if a.cmd == "ui":
+        from .ui.server import serve
+        serve(a.port, not a.no_browser)
+        return 0
     inv = None
     if a.cmd == "investigate":
         from .aws.session import AwsUnavailable, boto3_clients

@@ -1,0 +1,328 @@
+"""`pipefix ui`: a local web console for investigating failed runs and approving fixes.
+
+Security model: binds to 127.0.0.1 only; refuses requests whose Host header is not localhost (DNS rebinding);
+every state-changing request must carry the per-session token embedded in the page (so other websites in the
+same browser cannot trigger an investigation, a write or a merge request). AWS access is read-only as everywhere
+in pipefix; GitHub/GitLab tokens are read from this process's environment and never sent to the page.
+"""
+from __future__ import annotations
+
+import json
+import os
+import re
+import secrets
+import threading
+import traceback
+import uuid
+import webbrowser
+from datetime import datetime
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from pathlib import Path
+from urllib.parse import urlparse
+
+from .. import __version__
+from ..configtrace import load_repo, memory_literal_bytes
+from ..investigation import Investigation
+from ..models import Diagnosis
+from ..patch import Patch, build_patch
+from ..report import body, pr_title, redact
+
+STATIC = Path(__file__).resolve().parent / "static"
+TOKEN = secrets.token_urlsafe(24)
+JOBS: dict[str, dict] = {}
+LOCK = threading.Lock()
+STATUS: dict = {"aws": {"state": "checking"}}
+
+# ---------- turning results into JSON for the page ----------
+
+_GB = 1024**3
+
+
+def _gb(n) -> float | None:
+    return round(n / _GB, 1) if n else None
+
+
+def _num_gb(value: str | None) -> float | None:
+    m = re.search(r"(\d+(?:\.\d+)?)\.GB", value or "")
+    return float(m.group(1)) if m else None
+
+
+def _hours(value: str | None) -> float | None:
+    m = re.search(r"(\d+(?:\.\d+)?)\.h", value or "")
+    return float(m.group(1)) if m else None
+
+
+def _trace_rows(tr) -> list[dict]:
+    if not tr:
+        return []
+    rows = []
+    for s in tr.settings:
+        if s.directive in ("memory", "time", "errorStrategy", "maxRetries", "queue"):
+            rows.append({"level": s.level, "selector": redact(s.selector), "directive": s.directive,
+                         "value": redact(s.value.strip()), "where": s.where,
+                         "wins": tr.effective(s.directive) is s})
+    return rows
+
+
+def serialize(inv: Investigation, diags: list[Diagnosis], patch: Patch, repo: Path, cfg) -> dict:
+    fixes = {f.name: f for f in patch.fixes}
+    facts = inv.facts
+    ceiling = facts.get("max_task_memory_mib")
+    cap_bytes = memory_literal_bytes(cfg.caps.get("memory", "")) if cfg and cfg.caps.get("memory") else None
+    failures = []
+    for i, d in enumerate(diags):
+        f = d.failure
+        fx = fixes.get(f.simple_name)
+        tr = patch.traces.get(f.simple_name)
+        cur_mem = tr.effective("memory") if tr else None
+        cur_time = tr.effective("time") if tr else None
+        failures.append({
+            "id": i, "process": f.process, "name": f.simple_name, "tag": f.tag, "display": f.display,
+            "cls": d.cls.value, "label": d.cls.label, "confidence": d.confidence,
+            "explanation": redact(d.explanation), "recommendation": d.recommendation,
+            "evidence": [redact(e) for e in d.evidence],
+            "fixed": fx is not None,
+            "fix": {"settings": {k: redact(v) for k, v in fx.settings.items()}, "notes": [redact(n) for n in fx.notes]}
+            if fx else None,
+            "exit_code": f.exit_code, "attempts": f.attempts, "spot_reclaims": f.spot_reclaims,
+            "memory_gb": _gb(f.memory_bytes) or _num_gb(cur_mem.value if cur_mem else None),
+            "peak_gb": _gb(f.peak_rss_bytes),
+            "new_memory_gb": _num_gb(fx.settings.get("memory")) if fx else None,
+            "ceiling_gb": round(ceiling / 1024, 1) if ceiling else None,
+            "cap_gb": _gb(cap_bytes), "cap_source": cfg.cap_sources.get("memory", "") if cfg else "",
+            "time_h": round(f.time_ms / 3_600_000, 2) if f.time_ms else _hours(cur_time.value if cur_time else None),
+            "runtime_h": round(f.realtime_ms / 3_600_000, 2) if f.realtime_ms else None,
+            "new_time_h": _hours(fx.settings.get("time")) if fx else None,
+            "new_queue": fx.settings.get("queue", "").strip("'\"") if fx else "",
+            "job_ref": redact(f.job_ref), "image": redact(f.image), "work_dir": f.work_dir, "source": f.source,
+            "name_source": f.context.get("process_name_source", ""),
+            "log": [redact(x) for x in f.error_lines[-40:]],
+            "defined_in": tr.defined_in if tr else "", "labels": tr.labels if tr else [],
+            "trace": _trace_rows(tr),
+        })
+    findings = [{"severity": fd.severity, "title": redact(fd.title), "detail": redact(fd.detail), "process": fd.process}
+                for fd in inv.findings + patch.findings]
+    calls: dict[str, int] = {}
+    for c in inv.calls:
+        calls[c] = calls.get(c, 0) + 1
+    return {
+        "run": redact(inv.run_ref), "platform": inv.platform, "nextflow": inv.nextflow_version,
+        "start": inv.start.isoformat() if inv.start else None, "end": inv.end.isoformat() if inv.end else None,
+        "repo": str(repo), "failures": failures, "findings": findings,
+        "denials": [{**{k: redact(str(v)) for k, v in dn.items()}} for dn in inv.denials],
+        "calls": [{"call": k, "count": v} for k, v in sorted(calls.items())], "errors": sorted(set(inv.errors)),
+        "diff": patch.diff(), "files": [rel for rel, (o, n) in patch.files.items() if o != n],
+        "title": pr_title(patch) if patch.fixes else "", "description": body(diags, patch, inv),
+        "config_files": cfg.files if cfg else [], "ondemand_queues": facts.get("ondemand_queues", []),
+    }
+
+
+# ---------- jobs ----------
+
+def _new_job(kind: str, label: str) -> dict:
+    job = {"id": uuid.uuid4().hex[:10], "kind": kind, "label": label, "status": "running", "stages": [],
+           "result": None, "error": None, "created": datetime.now().isoformat(timespec="seconds"),
+           "patch": None, "repo": None}
+    with LOCK:
+        JOBS[job["id"]] = job
+    return job
+
+
+def _stage(job: dict, name: str) -> None:
+    for s in job["stages"]:
+        if s["state"] == "running":
+            s["state"] = "done"
+    job["stages"].append({"name": name, "state": "running"})
+
+
+def _run_investigation(job: dict, req: dict) -> None:
+    try:
+        from ..investigate import investigate
+        mode = req.get("mode")
+        if mode == "demo":
+            from ..demo import DEMO_JOBS, demo_clients, demo_repo
+            _stage(job, "Preparing the demo account and pipeline")
+            clients, repo = demo_clients(), demo_repo()
+            kwargs = {"batch_jobs": DEMO_JOBS}
+        else:
+            from ..aws.session import boto3_clients
+            _stage(job, "Connecting to AWS")
+            clients = boto3_clients(req.get("profile") or None, req.get("region") or None)
+            repo = Path(req.get("repo") or ".").expanduser().resolve()
+            value = (req.get("value") or "").strip()
+            if not value:
+                raise ValueError("Enter a queue name, job ids or a run id.")
+            kwargs = {"batch_queue": value} if mode == "batch-queue" else \
+                {"batch_jobs": value.replace(",", " ").split()} if mode == "batch-jobs" else {"omics_run": value}
+            kwargs["since_hours"] = float(req.get("since") or 24)
+        inv, diags = investigate(clients, on_stage=lambda n: _stage(job, n), **kwargs)
+        cfg = None
+        if (repo / "nextflow.config").is_file():
+            _stage(job, "Tracing the pipeline config")
+            cfg = load_repo(repo)
+            _stage(job, "Building the fix")
+            patch = build_patch(diags, repo, inv=inv, cfg=cfg, profiles=tuple(req.get("nf_profiles") or ()))
+        else:
+            _stage(job, "No nextflow.config in the repo folder, so only diagnosing")
+            patch = Patch({}, [], diags, {})
+        job["patch"], job["repo"] = patch, repo
+        job["result"] = serialize(inv, diags, patch, repo, cfg)
+        _stage(job, "Done")
+        job["stages"][-1]["state"] = "done"
+        job["status"] = "done"
+    except Exception as e:  # shown to the user as-is (redacted)
+        for s in job["stages"]:
+            if s["state"] == "running":
+                s["state"] = "failed"
+        job["status"], job["error"] = "failed", redact(f"{e}")
+        traceback.print_exc()
+
+
+def _apply(job: dict) -> dict:
+    patch: Patch = job["patch"]
+    if not patch or patch.empty:
+        raise ValueError("There is nothing to write for this investigation.")
+    written = patch.apply(job["repo"])
+    job["written"] = written
+    return {"written": written, "repo": str(job["repo"])}
+
+
+def _open_mr(job: dict, ready: bool) -> dict:
+    from .. import vcs
+    patch: Patch = job["patch"]
+    if not patch or patch.empty:
+        raise ValueError("There is nothing to propose for this investigation.")
+    repo = job["repo"]
+    remote = vcs.remote_info(repo)
+    diff = patch.diff()
+    h = vcs.diff_hash(diff)
+    if existing := vcs.find_existing(remote, h):
+        return {"url": existing, "existing": True}
+    if vcs.git(repo, "status", "--porcelain", "--", *patch.files.keys()) and not job.get("written"):
+        raise ValueError("The files pipefix changes have uncommitted edits. Commit or stash them first.")
+    written = job.get("written") or patch.apply(repo)
+    text, title = job["result"]["description"], pr_title(patch)
+    branch, base = vcs.commit_branch(repo, written, title, text, h)
+    try:
+        url = vcs.open_request(repo, remote, branch, base, title, text, draft=not ready)
+    finally:
+        vcs.git(repo, "checkout", base)
+    return {"url": url, "existing": False, "branch": branch}
+
+
+def _check_aws() -> None:
+    try:
+        from ..aws.session import boto3_clients
+        c = boto3_clients()
+        ident = c.call("sts", "get_caller_identity")
+        if "__error__" in ident:
+            STATUS["aws"] = {"state": "error", "detail": ident["__error__"], "region": c.region}
+        else:
+            STATUS["aws"] = {"state": "ok", "region": c.region, "identity": redact(ident.get("Arn", ""))}
+    except Exception as e:
+        STATUS["aws"] = {"state": "missing", "detail": redact(str(e))}
+
+
+# ---------- HTTP ----------
+
+class Handler(BaseHTTPRequestHandler):
+    server_version = "pipefix"
+
+    def log_message(self, *args):
+        pass
+
+    def _send(self, code: int, body: bytes, ctype: str = "application/json; charset=utf-8"):
+        self.send_response(code)
+        self.send_header("Content-Type", ctype)
+        self.send_header("Content-Length", str(len(body)))
+        self.send_header("Cache-Control", "no-store")
+        self.send_header("X-Content-Type-Options", "nosniff")
+        self.send_header("Referrer-Policy", "no-referrer")
+        self.end_headers()
+        self.wfile.write(body)
+
+    def _json(self, code: int, obj) -> None:
+        self._send(code, json.dumps(obj, default=str).encode())
+
+    def _host_ok(self) -> bool:
+        host = (self.headers.get("Host") or "").split(":")[0]
+        return host in ("127.0.0.1", "localhost")
+
+    def do_GET(self):
+        if not self._host_ok():
+            return self._json(403, {"error": "pipefix only answers on localhost"})
+        u = urlparse(self.path)
+        if u.path in ("/", "/index.html"):
+            html = (STATIC / "index.html").read_text(encoding="utf-8").replace("__PIPEFIX_TOKEN__", TOKEN)
+            return self._send(200, html.encode(), "text/html; charset=utf-8")
+        if m := re.fullmatch(r"/fonts/([\w.-]+\.woff2)", u.path):
+            f = STATIC / "fonts" / m.group(1)
+            if f.is_file():
+                self.send_response(200)
+                data = f.read_bytes()
+                self.send_header("Content-Type", "font/woff2")
+                self.send_header("Content-Length", str(len(data)))
+                self.send_header("Cache-Control", "max-age=86400")
+                self.end_headers()
+                return self.wfile.write(data)
+        if u.path == "/api/status":
+            return self._json(200, {"version": __version__, **STATUS, "cwd": os.getcwd(),
+                                    "cwd_is_pipeline": Path("nextflow.config").is_file(),
+                                    "github_token": bool(os.environ.get("GITHUB_TOKEN") or os.environ.get("GH_TOKEN")),
+                                    "gitlab_token": bool(os.environ.get("GITLAB_TOKEN"))})
+        if u.path == "/api/jobs":
+            return self._json(200, [{k: j[k] for k in ("id", "kind", "label", "status", "created")} |
+                                    {"failures": len(j["result"]["failures"]) if j["result"] else None,
+                                     "fixed": sum(f["fixed"] for f in j["result"]["failures"]) if j["result"] else None}
+                                    for j in sorted(JOBS.values(), key=lambda j: j["created"], reverse=True)])
+        if m := re.fullmatch(r"/api/jobs/(\w+)", u.path):
+            job = JOBS.get(m.group(1))
+            if not job:
+                return self._json(404, {"error": "No such investigation."})
+            return self._json(200, {k: job[k] for k in ("id", "kind", "label", "status", "stages", "result", "error")}
+                              | {"written": job.get("written"), "mr": job.get("mr")})
+        self._json(404, {"error": "Not found."})
+
+    def do_POST(self):
+        if not self._host_ok():
+            return self._json(403, {"error": "pipefix only answers on localhost"})
+        if not secrets.compare_digest(self.headers.get("X-Pipefix-Token", ""), TOKEN):
+            return self._json(403, {"error": "Missing or wrong session token. Reload the page."})
+        try:
+            n = int(self.headers.get("Content-Length") or 0)
+            req = json.loads(self.rfile.read(n) or b"{}")
+        except ValueError:
+            return self._json(400, {"error": "Invalid JSON."})
+        u = urlparse(self.path)
+        try:
+            if u.path == "/api/investigate":
+                label = {"demo": "Demo run", "batch-queue": f"Queue {req.get('value', '')}",
+                         "batch-jobs": "Batch jobs", "omics-run": f"HealthOmics run {req.get('value', '')}"}.get(
+                    req.get("mode"), "Investigation")
+                job = _new_job(req.get("mode", ""), label)
+                threading.Thread(target=_run_investigation, args=(job, req), daemon=True).start()
+                return self._json(202, {"id": job["id"]})
+            if m := re.fullmatch(r"/api/jobs/(\w+)/(apply|open-mr)", u.path):
+                job = JOBS.get(m.group(1))
+                if not job or job["status"] != "done":
+                    return self._json(409, {"error": "That investigation isn't finished."})
+                if m.group(2) == "apply":
+                    return self._json(200, _apply(job))
+                job["mr"] = _open_mr(job, bool(req.get("ready")))
+                return self._json(200, job["mr"])
+        except Exception as e:
+            return self._json(400, {"error": redact(str(e))})
+        self._json(404, {"error": "Not found."})
+
+
+def serve(port: int = 8787, open_browser: bool = True) -> None:
+    threading.Thread(target=_check_aws, daemon=True).start()
+    httpd = ThreadingHTTPServer(("127.0.0.1", port), Handler)
+    url = f"http://127.0.0.1:{httpd.server_address[1]}/"
+    print(f"pipefix {__version__} console: {url}  (Ctrl+C to stop)")
+    if open_browser:
+        threading.Timer(0.6, lambda: webbrowser.open(url)).start()
+    try:
+        httpd.serve_forever()
+    except KeyboardInterrupt:
+        pass

@@ -86,9 +86,10 @@ def classify(f: TaskFailure) -> Diagnosis:
             evidence[cls].append(why)
 
     for line in _text(f):
+        line = re.sub(r"^\[[0-9a-f-]{4,12}\]\s*", "", line.strip())   # drop the log-stream prefix
         for cls, pat, w in PATTERNS:
             if re.search(pat, line, re.I):
-                add(cls, w, f"log: `{line.strip()[:200]}`")
+                add(cls, w, f"log: `{line[:200]}`")
                 break
 
     near_limit = bool(f.memory_bytes and f.peak_rss_bytes and f.peak_rss_bytes >= 0.9 * f.memory_bytes)

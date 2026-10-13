@@ -42,7 +42,11 @@ class Remote:
 
 
 def remote_info(repo: str | Path, remote: str = "origin", provider: str | None = None) -> Remote:
-    url = git(repo, "remote", "get-url", remote)
+    try:
+        url = git(repo, "remote", "get-url", remote)
+    except RuntimeError:
+        raise RuntimeError(f"This repo has no '{remote}' remote, so pipefix can't open a merge request. "
+                           f"Add one with `git remote add {remote} <url>`.") from None
     m = re.match(r"(?:https?://(?:[^@/]+@)?|ssh://git@|git@)(?P<host>[^/:]+)(?::\d+)?[/:](?P<path>.+?)(?:\.git)?/?$", url)
     if not m:
         raise RuntimeError(f"cannot parse remote URL {url}")

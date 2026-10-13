@@ -15,15 +15,20 @@ from .models import Diagnosis, FailureClass
 
 def investigate(clients: Clients, *, batch_jobs: list[str] | None = None, batch_queue: str | None = None,
                 since_hours: float = 24, name_prefix: str = "", omics_run: str | None = None,
-                cloudtrail: bool = True) -> tuple[Investigation, list[Diagnosis]]:
+                cloudtrail: bool = True, on_stage=None) -> tuple[Investigation, list[Diagnosis]]:
+    stage = on_stage or (lambda name: None)
     if omics_run:
+        stage("Reading the HealthOmics run, failed tasks and engine log")
         inv = investigate_omics(clients, omics_run)
     else:
+        stage("Reading failed Batch jobs, logs, work folders and compute environments")
         inv = investigate_batch(clients, batch_jobs, batch_queue, since_hours, name_prefix)
 
+    stage("Classifying failures")
     diagnoses = classify_all(inv.failures)
 
     if cloudtrail:
+        stage("Searching CloudTrail for access denials")
         end = inv.end or datetime.now(timezone.utc)
         start = inv.start or end - timedelta(hours=since_hours)
         inv.denials = access_denials(clients, start, end, inv.facts.get("roles", []))
@@ -36,6 +41,7 @@ def investigate(clients: Clients, *, batch_jobs: list[str] | None = None, batch_
                     d.failure.error_lines += lines
                     diagnoses[i] = classify(d.failure)
 
+    stage("Checking container images")
     for d in diagnoses:
         if d.cls in (FailureClass.CONTAINER, FailureClass.PERMISSION) and d.failure.image:
             info = check_image(clients, d.failure.image)

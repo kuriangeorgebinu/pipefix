@@ -47,7 +47,7 @@ workflow { SAREK(); MULTIQC() | view }
 
 def test_generated_config_with_real_nextflow(tmp_path):
     repo = tmp_path / "pipe"
-    shutil.copytree(EX / "sarek-mini", repo)
+    shutil.copytree(Path(__file__).resolve().parent.parent / "pipefix" / "demo" / "pipeline", repo)
     jobs = [GATK_JOB, STAR_JOB]
     inv, diags = investigate(batch_account(jobs, GATK_WORKDIR_FILES), batch_jobs=[j["jobId"] for j in jobs],
                              cloudtrail=False)

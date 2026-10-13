@@ -248,7 +248,15 @@ def build_patch(diagnoses: list[Diagnosis], repo: str | Path, min_confidence: fl
         if (cfg.processes or approximate) and f.simple_name not in cfg.processes:
             hit = cfg.resolve_process(f.context.get("job_name") or f.process)
             if hit:
+                old = f.simple_name
                 f.process, f.tag = hit[0], f.tag or hit[1]
+                f.context["process_name_source"] = "job name matched to the repo"
+                for fd in (inv.findings if inv else []):
+                    if fd.title == "Process name is approximate" and fd.process == old:
+                        fd.severity, fd.process = "info", f.simple_name
+                        fd.title = "Process matched from the job name"
+                        fd.detail = (f"Batch job `{f.context.get('job_name')}` is `{f.simple_name}`, defined in "
+                                     f"`{cfg.processes[f.simple_name][0]}`.")
             elif not f.process.startswith("("):
                 findings.append(Finding("Process not found in this repo",
                                         f"`{f.process}` is not defined in any .nf file here, so no config was written "
