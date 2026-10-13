@@ -63,7 +63,9 @@ class Patch:
             if old != new:
                 p = Path(repo) / rel
                 p.parent.mkdir(parents=True, exist_ok=True)
-                p.write_text(new, encoding="utf-8")
+                # keep the file's own line endings (CRLF repos on Windows stay CRLF; new files get LF)
+                eol = "\r\n" if p.exists() and b"\r\n" in p.read_bytes() else "\n"
+                p.write_text(new, encoding="utf-8", newline=eol)
                 written.append(rel)
         return written
 

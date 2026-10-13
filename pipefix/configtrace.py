@@ -172,7 +172,7 @@ class _Parser:
     def parse_file(self, path: Path, depth: int = 0, profile: str = "") -> None:
         if depth > 8 or not path.is_file():
             return
-        rel = str(path.relative_to(self.cfg.root)) if path.is_relative_to(self.cfg.root) else str(path)
+        rel = path.relative_to(self.cfg.root).as_posix() if path.is_relative_to(self.cfg.root) else path.as_posix()
         if rel in self.cfg.files:
             return
         self.cfg.files.append(rel)
@@ -268,7 +268,7 @@ def _scan_processes(cfg: RepoConfig) -> None:
             # the directive section: from the opening brace to the first input:/output:/script:/exec:/shell:
             body_end = re.search(r"^\s*(input|output|script|shell|exec|when)\s*:", text[m.end():], re.M)
             head = text[m.end(): m.end() + (body_end.start() if body_end else 3000)]
-            rel = str(nf.relative_to(cfg.root))
+            rel = nf.relative_to(cfg.root).as_posix()
             line = text.count("\n", 0, m.start()) + 1
             labels = _LABEL.findall(head)
             settings = []
