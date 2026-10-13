@@ -79,8 +79,18 @@ def test_spot_patch_sets_batch_retries(tmp_path):
     patch = build_patch(diags, repo)
     cfg = patch.files[CONFIG_REL][1]
     assert "aws.batch.maxSpotAttempts = 3" in cfg
-    assert "Integer.MAX_VALUE ? 'retry' : 'finish' }\n" in cfg
+    assert "withName: 'STAR_ALIGN'" in cfg            # recovered from the job name via the repo's processes
     assert cfg.count("{") == cfg.count("}")
+
+
+def test_unresolvable_job_name_writes_nothing(tmp_path):
+    repo = tmp_path / "empty"
+    repo.mkdir()
+    (repo / "nextflow.config").write_text("manifest { name = 'x' }\n")
+    diags = [classify(f) for f in aws.batch_failures_from_json(aws.load_json(EX / "spot/batch-jobs.json"))]
+    patch = build_patch(diags, repo)
+    assert patch.empty and patch.advisories
+    assert any(f.title == "Process not found in this repo" for f in patch.findings)
 
 
 def test_mixed_only_fixes_what_config_can_fix(tmp_path):
@@ -105,3 +115,36 @@ def test_cli_apply_and_commit(tmp_path, capsys):
     assert rc == 0
     assert (repo / CONFIG_REL).exists()
     assert "Wrote:" in capsys.readouterr().out
+
+
+# ---------- regressions from the CrewAI plan review ----------
+
+def test_hand_edited_block_is_updated_not_duplicated(tmp_path):
+    repo = _copy(tmp_path, "oom")
+    (repo / "conf").mkdir(exist_ok=True)
+    (repo / CONFIG_REL).write_text(
+        'process {\n  withName: "GATK4_HAPLOTYPECALLER" {\n    memory = { 24.GB * task.attempt }\n'
+        '    errorStrategy = { task.exitStatus in [137] ? "retry" : "finish" }\n  }\n'
+        '  withName: "EMPTY_ONE" {\n  }\n}\n')
+    failures = nextflow.merge(nextflow.parse_trace(EX / "oom/trace.txt"), nextflow.parse_log(EX / "oom/nextflow.log"))
+    patch = build_patch([classify(f) for f in failures], repo)
+    cfg = patch.files[CONFIG_REL][1]
+    assert cfg.count("withName: 'GATK4_HAPLOTYPECALLER'") == 1 and "{ 32.GB * task.attempt }" in cfg
+
+
+def test_spot_reason_only_applies_to_its_own_task(tmp_path):
+    log = tmp_path / "nextflow.log"
+    log.write_text(
+        "Oct-12 21:00:00.000 [AWSBatch-executor] DEBUG - [AWS BATCH] Task `PROC_A (s1)` Host EC2 (instance i-1) terminated.\n"
+        "ERROR ~ Error executing process > 'PROC_A (s1)'\n\nCaused by:\n  Essential container in task exited\n\n"
+        "ERROR ~ Error executing process > 'PROC_B (s2)'\n\nCaused by:\n"
+        "  Process `PROC_B (s2)` terminated with an error exit status (1)\n\nCommand error:\n"
+        "  [E::fai_load] Could not load fai index of ref.fa\n")
+    diags = {d.failure.simple_name: d for d in map(classify, nextflow.parse_log(log))}
+    assert diags["PROC_A"].cls == FailureClass.SPOT_INTERRUPTION
+    assert diags["PROC_B"].cls == FailureClass.REFERENCE
+
+
+def test_exit_140_alone_does_not_change_time():
+    d = classify(TaskFailure("P", exit_code=140))
+    assert d.confidence < 0.6       # below the auto-fix threshold

@@ -11,5 +11,13 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python }}
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+      - name: Install Nextflow (used to prove the generated config really works)
+        run: |
+          curl -sSL -o nextflow https://github.com/nextflow-io/nextflow/releases/download/v24.10.4/nextflow-24.10.4-dist
+          chmod +x nextflow && echo "NEXTFLOW=$PWD/nextflow" >> "$GITHUB_ENV"
       - run: pip install -e '.[dev]'
       - run: pytest -q

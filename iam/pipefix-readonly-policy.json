@@ -1,0 +1,56 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "BatchAndCompute",
+      "Effect": "Allow",
+      "Action": [
+        "batch:ListJobs",
+        "batch:DescribeJobs",
+        "batch:DescribeJobQueues",
+        "batch:DescribeComputeEnvironments",
+        "batch:DescribeJobDefinitions",
+        "ec2:DescribeInstanceTypes",
+        "ec2:DescribeLaunchTemplateVersions"
+      ],
+      "Resource": "*"
+    },
+    {
+      "Sid": "HealthOmics",
+      "Effect": "Allow",
+      "Action": [
+        "omics:GetRun",
+        "omics:ListRunTasks",
+        "omics:GetRunTask"
+      ],
+      "Resource": "*"
+    },
+    {
+      "Sid": "Logs",
+      "Effect": "Allow",
+      "Action": ["logs:GetLogEvents"],
+      "Resource": [
+        "arn:aws:logs:*:*:log-group:/aws/batch/job:*",
+        "arn:aws:logs:*:*:log-group:/aws/omics/WorkflowLog:*"
+      ]
+    },
+    {
+      "Sid": "NextflowWorkDirFilesOnly",
+      "Effect": "Allow",
+      "Action": ["s3:GetObject"],
+      "Resource": [
+        "arn:aws:s3:::REPLACE-WITH-YOUR-WORK-BUCKET/*/.command.*",
+        "arn:aws:s3:::REPLACE-WITH-YOUR-WORK-BUCKET/*/.exitcode"
+      ]
+    },
+    {
+      "Sid": "AccessDeniedSearchAndImageCheck",
+      "Effect": "Allow",
+      "Action": [
+        "cloudtrail:LookupEvents",
+        "ecr:DescribeImages"
+      ],
+      "Resource": "*"
+    }
+  ]
+}

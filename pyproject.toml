@@ -4,8 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "pipefix"
-version = "0.1.0"
-description = "Diagnose failed Nextflow genomics runs on AWS Batch / HealthOmics and open the config fix as a PR/MR."
+version = "0.2.0"
+description = "Investigate failed Nextflow runs on AWS Batch / HealthOmics through the AWS SDK, trace the pipeline config, and open the fix as a PR/MR."
 readme = "README.md"
 requires-python = ">=3.10"
 license = {text = "Proprietary"}
