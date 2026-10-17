@@ -359,7 +359,7 @@ dialog .scopes { font-size: 13.5px; margin: 8px 0 0; padding-left: 18px; }
 .cites li { display: grid; grid-template-columns: 26px 1fr; gap: 10px; font-size: 13.5px; }
 .cites .n { width: 22px; height: 22px; border-radius: 6px; display: grid; place-items: center; font-size: 11.5px; font-weight: 600;
   background: var(--surface-2); color: var(--ink-2); font-family: var(--mono); }
-.cites li.used .n { background: var(--C); color: #fff; }
+.cites li.cited .n { background: var(--C); color: #fff; }
 .cites a { font-weight: 500; text-decoration: none; }
 .cites a:hover { text-decoration: underline; }
 .cites .host { color: var(--ink-3); font-size: 12px; font-family: var(--mono); }
@@ -1017,7 +1017,7 @@ function changeBlock(r, job) {
 
 function host(u) { try { return new URL(u).host; } catch { return ""; } }
 function citeList(sources, used) {
-  return `<ol class="cites">${sources.map(s => `<li class="${used.has(s.n) ? "used" : ""}"><span class="n" aria-label="source ${s.n}">${s.n}</span><div>
+  return `<ol class="cites">${sources.map(s => `<li class="${used.has(s.n) ? "cited" : ""}"><span class="n" aria-label="source ${s.n}">${s.n}</span><div>
     <a href="${esc(s.url)}" target="_blank" rel="noopener noreferrer">${esc(s.title || s.url)}</a><span class="site ${esc(s.site)}">${esc(s.site)}</span>
     <div class="host">${esc(host(s.url))}</div>${s.snippet ? `<p>${esc(s.snippet)}</p>` : ""}</div></li>`).join("")}</ol>`;
 }

@@ -136,6 +136,19 @@ def test_without_keys_falls_back_to_rules(repo, failure, monkeypatch):
     assert "Not used:" in body([failure], patch)
 
 
+def test_split_entries_for_one_process_are_merged(repo, failure, ai_keys):
+    # seen live: the model put memory/retries and cpus for SORT_READS in two separate entries
+    reply = {"fixes": [{"process": "SORT_READS", "settings": {"memory": "{ 15.GB * task.attempt }", "maxRetries": "2"},
+                        "rationale": "12 GB buffer + 25%", "sources": [1]},
+                       {"process": "SORT_READS", "settings": {"cpus": "{ 2 * task.attempt }"},
+                        "rationale": "keep 2 cpus", "sources": [2]}]}
+    cfg = load_repo(repo)
+    res = research(None, [failure], cfg, http=FakeHttp(reply))
+    assert len(res.fixes) == 1 and res.fixes[0].sources == [1, 2]
+    new = build_patch([failure], repo, cfg=cfg, ai=res).files["conf/pipefix.config"][1]
+    assert "15.GB" in new and "cpus" in new and "maxRetries" in new
+
+
 def test_exit_codes_and_check():
     assert exit_codes("((130..145) + 104 + 1)") == set(range(130, 146)) | {104, 1}
     assert exit_codes("[1, 137]") == {1, 137} and exit_codes("x") is None

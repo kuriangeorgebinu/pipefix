@@ -356,7 +356,14 @@ def research(inv: Investigation | None, diagnoses: list[Diagnosis], cfg: RepoCon
             res.rejected.append(f"{name}: no valid source cited, so the proposal was not used")
             continue
         if settings:
-            res.fixes.append(AIFix(name, settings, redact(str(fx.get("rationale", "")))[:600], cites))
+            why = redact(str(fx.get("rationale", "")))[:600]
+            prev = next((p for p in res.fixes if p.name == name), None)
+            if prev:  # the model sometimes splits one process over several entries: merge them
+                prev.settings.update(settings)
+                prev.rationale = (prev.rationale + " " + why).strip()
+                prev.sources += [n for n in cites if n not in prev.sources]
+            else:
+                res.fixes.append(AIFix(name, settings, why, cites))
     for it in out.get("infrastructure") or []:
         res.infrastructure.append({"title": redact(str(it.get("title", "")))[:160],
                                    "detail": redact(str(it.get("detail", "")))[:800],
