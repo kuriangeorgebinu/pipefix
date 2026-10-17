@@ -9,11 +9,17 @@ from .models import Diagnosis
 from .patch import Patch
 
 _ACCOUNT = re.compile(r"(?<!\d)\d{12}(?!\d)")
+_SECRET = re.compile(r"\b(?:gh[pousr]_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}|glpat-[A-Za-z0-9_-]{20,})")
 
 
 def redact(text: str) -> str:
-    """Hide AWS account IDs (also inside ARNs and ECR registry hosts) before text leaves the machine."""
-    return _ACCOUNT.sub("<account-id>", text or "")
+    """Hide AWS account IDs (also inside ARNs and ECR registry hosts) and GitHub/GitLab tokens before text
+    leaves the machine."""
+    from .vcs import known_tokens
+    text = _SECRET.sub("<token>", text or "")
+    for t in known_tokens():
+        text = text.replace(t, "<token>")
+    return _ACCOUNT.sub("<account-id>", text)
 
 
 def _md(text: str) -> str:

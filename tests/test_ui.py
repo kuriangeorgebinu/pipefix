@@ -47,6 +47,58 @@ def test_rejects_other_hosts_and_missing_token(base):
     assert req(base + "/api/investigate", {"mode": "demo"}, token="wrong")[0] == 403
 
 
+FAKE = "ghp_" + "A1b2C3d4E5f6G7h8I9j0K1l2M3n4O5p6Q7r8"
+
+
+@pytest.fixture
+def fake_github(monkeypatch):
+    from pipefix import vcs
+    seen = []
+
+    def who(provider, token, host):
+        seen.append((provider, host))
+        if token != FAKE:
+            raise ValueError("GitHub rejected this token (401).")
+        return "octo-cat"
+    monkeypatch.setattr(vcs, "_who", who)
+    monkeypatch.setattr(vcs.set_token, "__defaults__", (None, who))
+    for var in ("GITHUB_TOKEN", "GH_TOKEN", "GITLAB_TOKEN"):
+        monkeypatch.delenv(var, raising=False)
+    yield seen
+    vcs.clear_token("github"), vcs.clear_token("gitlab")
+
+
+def test_token_set_in_console_is_checked_kept_and_never_returned(base, fake_github):
+    from pipefix import vcs
+    st = json.loads(req(base + "/api/status")[1])
+    assert st["tokens"]["github"] == {"set": False}
+    assert req(base + "/api/token", {"provider": "github", "token": FAKE}, token=None)[0] == 403   # needs session token
+    code, out = req(base + "/api/token", {"provider": "github", "token": "ghp_wrong" + "x" * 30})
+    assert code == 400 and "rejected" in json.loads(out)["error"] and "ghp_wrong" not in out.decode()
+    code, out = req(base + "/api/token", {"provider": "github", "token": "  " + FAKE + "\n"})
+    assert code == 200 and fake_github[-1] == ("github", "github.com")
+    for raw in (out, req(base + "/api/status")[1]):
+        assert FAKE.encode() not in raw                                         # never sent back to the page
+    st = json.loads(req(base + "/api/status")[1])["tokens"]["github"]
+    assert st == {"set": True, "source": "console", "hint": FAKE[-4:], "login": "octo-cat", "host": "github.com"}
+    assert vcs.get_token("github") == (FAKE, "console")
+    from pipefix.report import redact
+    assert FAKE not in redact(f"push failed: https://x:{FAKE}@github.com")      # never leaks into errors or MRs
+    assert json.loads(req(base + "/api/token/clear", {"provider": "github"})[1]) == {"set": False}
+    assert vcs.get_token("github") == (None, None)
+
+
+def test_token_input_validation_and_env_fallback(base, fake_github, monkeypatch):
+    from pipefix import vcs
+    assert req(base + "/api/token", {"provider": "bitbucket", "token": FAKE})[0] == 400
+    assert req(base + "/api/token", {"provider": "github", "token": "two words"})[0] == 400
+    assert req(base + "/api/token", {"provider": "gitlab", "token": FAKE, "host": "evil.com/x?y"})[0] == 400
+    assert fake_github == []                                                     # nothing was sent anywhere
+    monkeypatch.setenv("GITHUB_TOKEN", FAKE)
+    st = json.loads(req(base + "/api/status")[1])["tokens"]["github"]
+    assert st["set"] and st["source"] == "GITHUB_TOKEN" and FAKE not in json.dumps(st)
+
+
 def test_demo_run_end_to_end(base):
     code, out = req(base + "/api/investigate", {"mode": "demo"})
     assert code == 202

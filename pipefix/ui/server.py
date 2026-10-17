@@ -3,7 +3,9 @@
 Security model: binds to 127.0.0.1 only; refuses requests whose Host header is not localhost (DNS rebinding);
 every state-changing request must carry the per-session token embedded in the page (so other websites in the
 same browser cannot trigger an investigation, a write or a merge request). AWS access is read-only as everywhere
-in pipefix; GitHub/GitLab tokens are read from this process's environment and never sent to the page.
+in pipefix. GitHub/GitLab tokens come from the environment or are pasted into the console once: either way they
+stay in this process's memory, are never written to disk, and are never sent back to the page (only "set", who
+it belongs to and its last four characters).
 """
 from __future__ import annotations
 
@@ -20,7 +22,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import urlparse
 
-from .. import __version__
+from .. import __version__, vcs
 from ..configtrace import load_repo, memory_literal_bytes
 from ..investigation import Investigation
 from ..models import Diagnosis
@@ -268,8 +270,7 @@ class Handler(BaseHTTPRequestHandler):
         if u.path == "/api/status":
             return self._json(200, {"version": __version__, **STATUS, "cwd": os.getcwd(),
                                     "cwd_is_pipeline": Path("nextflow.config").is_file(),
-                                    "github_token": bool(os.environ.get("GITHUB_TOKEN") or os.environ.get("GH_TOKEN")),
-                                    "gitlab_token": bool(os.environ.get("GITLAB_TOKEN"))})
+                                    "tokens": {p: vcs.token_status(p) for p in vcs.PROVIDERS}})
         if u.path == "/api/jobs":
             return self._json(200, [{k: j[k] for k in ("id", "kind", "label", "status", "created")} |
                                     {"failures": len(j["result"]["failures"]) if j["result"] else None,
@@ -295,6 +296,10 @@ class Handler(BaseHTTPRequestHandler):
             return self._json(400, {"error": "Invalid JSON."})
         u = urlparse(self.path)
         try:
+            if u.path == "/api/token":
+                return self._json(200, vcs.set_token(req.get("provider", ""), req.get("token", ""), req.get("host")))
+            if u.path == "/api/token/clear":
+                return self._json(200, vcs.clear_token(req.get("provider", "")))
             if u.path == "/api/investigate":
                 label = {"demo": "Demo run", "batch-queue": f"Queue {req.get('value', '')}",
                          "batch-jobs": "Batch jobs", "omics-run": f"HealthOmics run {req.get('value', '')}"}.get(

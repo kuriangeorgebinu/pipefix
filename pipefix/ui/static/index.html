@@ -326,6 +326,29 @@ dialog ul { padding-left: 18px; }
 dialog .row { display: flex; gap: 10px; justify-content: flex-end; margin-top: 22px; flex-wrap: wrap; }
 dialog label { display: flex; gap: 8px; align-items: center; font-size: 14px; margin-top: 8px; }
 
+/* ---------- git provider tokens ---------- */
+.git ul { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.git li {
+  display: grid; grid-template-columns: 10px 1fr auto; gap: 4px 10px; align-items: center;
+  padding: 10px 12px; border: 1px solid var(--rule); border-radius: 10px; background: var(--surface); font-size: 13.5px;
+}
+.git li i { width: 8px; height: 8px; border-radius: 50%; background: var(--rule-2); }
+.git li.on i { background: var(--A); box-shadow: 0 0 0 3px var(--A-wash); }
+.git li b { font-weight: 600; }
+.git li small { grid-column: 2 / -1; color: var(--ink-3); font-size: 12px; overflow-wrap: anywhere; }
+.git li small code { font-size: 11.5px; }
+.linkbtn { border: 0; background: none; padding: 0; color: var(--C); cursor: pointer; font-size: 13px; font-weight: 500; }
+.linkbtn:hover { text-decoration: underline; }
+.linkbtn.quiet { color: var(--ink-3); }
+.secret { display: flex; gap: 6px; }
+.secret input { flex: 1; min-width: 0; font-family: var(--mono); font-size: 13px; letter-spacing: .02em; }
+.secret button { flex: none; padding: 0 12px; }
+dialog .field { margin-top: 14px; }
+dialog .field input { border: 1px solid var(--rule-2); background: var(--sunk); border-radius: var(--r-ctl); padding: 9px 11px; width: 100%; }
+dialog .field small { color: var(--ink-3); font-size: 12.5px; }
+dialog .err { color: var(--T); font-size: 13.5px; margin: 12px 0 0; }
+dialog .scopes { font-size: 13.5px; margin: 8px 0 0; padding-left: 18px; }
+
 /* ---------- responsive ---------- */
 @media (max-width: 1080px) {
   .change { grid-template-columns: 1fr; }
@@ -397,6 +420,11 @@ dialog label { display: flex; gap: 8px; align-items: center; font-size: 14px; ma
         <p class="note">Read-only in AWS. pipefix only changes your repo when you choose Write changes or Open merge request.</p>
       </form>
     </section>
+    <section class="git" aria-labelledby="git-h">
+      <h2 id="git-h">Merge requests</h2>
+      <ul id="git-list"><li><i></i><span>Checking</span></li></ul>
+      <p class="note">Tokens stay in this console's memory: never saved to disk, never shown again. Stopping pipefix forgets them.</p>
+    </section>
     <section class="history" aria-labelledby="hist-h">
       <h2 id="hist-h">This session</h2>
       <ul id="history"><li class="empty">Investigations you run appear here.</li></ul>
@@ -414,6 +442,31 @@ dialog label { display: flex; gap: 8px; align-items: center; font-size: 14px; ma
   <div class="row">
     <button class="btn" type="button" id="mr-cancel">Cancel</button>
     <button class="btn go" type="button" id="mr-go">Open merge request</button>
+  </div>
+</dialog>
+
+<dialog id="tok-dialog" aria-labelledby="tok-h">
+  <h2 id="tok-h">Add a GitHub token</h2>
+  <p id="tok-intro"></p>
+  <ul class="scopes" id="tok-scopes"></ul>
+  <div class="field" id="tok-host-f">
+    <label for="tok-host">Host</label>
+    <input id="tok-host" class="code" autocomplete="off" spellcheck="false">
+    <small id="tok-host-hint"></small>
+  </div>
+  <div class="field">
+    <label for="tok-value">Token</label>
+    <div class="secret">
+      <input id="tok-value" type="password" autocomplete="off" autocapitalize="off" spellcheck="false"
+             data-1p-ignore data-lpignore="true" aria-describedby="tok-note">
+      <button class="btn" type="button" id="tok-show" aria-pressed="false" aria-controls="tok-value">Show</button>
+    </div>
+    <small id="tok-note">pipefix checks it with the provider, then keeps it in memory only. The page never gets it back.</small>
+  </div>
+  <p class="err" id="tok-err" role="alert" hidden></p>
+  <div class="row">
+    <button class="btn" type="button" id="tok-cancel">Cancel</button>
+    <button class="btn primary" type="button" id="tok-save">Check and save</button>
   </div>
 </dialog>
 
@@ -467,6 +520,7 @@ async function loadStatus() {
   try {
     STATUS = await api("/api/status");
     $("#ver").textContent = "v" + STATUS.version;
+    renderTokens();
     const c = $("#conn"), a = STATUS.aws || {};
     if (a.state === "checking") { setTimeout(loadStatus, 1500); return; }
     c.classList.toggle("ok", a.state === "ok");
@@ -479,6 +533,69 @@ async function loadStatus() {
     if (a.state !== "ok" && !store.get("pipefix-mode")) setMode("demo");
   } catch (e) { $("#conn span").textContent = "Console not reachable"; }
 }
+
+/* ---------- GitHub / GitLab tokens ---------- */
+const PROV = {
+  github: { name: "GitHub", host: "github.com", what: "pull requests",
+    make: "https://github.com/settings/personal-access-tokens/new",
+    scopes: ["Fine-grained token, limited to your pipeline repos", "Contents: Read and write", "Pull requests: Read and write"],
+    hostHint: "Change only for GitHub Enterprise Server." },
+  gitlab: { name: "GitLab", host: "gitlab.com", what: "merge requests",
+    make: "https://gitlab.com/-/user_settings/personal_access_tokens",
+    scopes: ["Personal or project access token", "Scope: api", "Role: Developer or higher on the project"],
+    hostHint: "Your GitLab address, for self-managed GitLab." },
+};
+const anyToken = () => Object.values(STATUS.tokens || {}).some(t => t.set);
+function renderTokens() {
+  const t = STATUS.tokens || {};
+  $("#git-list").innerHTML = Object.entries(PROV).map(([p, d]) => {
+    const s = t[p] || {};
+    const hint = s.hint ? ` · token <code>…${esc(s.hint)}</code>` : "";
+    const sub = !s.set ? `Not connected. Needed to open ${d.what}.` :
+      s.source === "console" ? `Connected as <b>${esc(s.login)}</b>${s.host && s.host !== d.host ? ` on ${esc(s.host)}` : ""}${hint}` :
+      `From the <code>${esc(s.source)}</code> environment variable${hint}`;
+    const act = !s.set ? `<button class="linkbtn" type="button" data-tok="${p}">Add token</button>` :
+      s.source === "console" ? `<button class="linkbtn quiet" type="button" data-tok-clear="${p}" aria-label="Remove the ${d.name} token">Remove</button>` :
+      `<button class="linkbtn quiet" type="button" data-tok="${p}" title="Use a different token for this session">Replace</button>`;
+    return `<li class="${s.set ? "on" : ""}"><i aria-hidden="true"></i><b>${d.name}</b>${act}<small>${sub}</small></li>`;
+  }).join("");
+}
+let TOK_P = "github";
+function openToken(p) {
+  TOK_P = p; const d = PROV[p], s = (STATUS.tokens || {})[p] || {};
+  $("#tok-h").textContent = `Add a ${d.name} token`;
+  $("#tok-intro").innerHTML = `pipefix uses it to push the fix branch and open ${d.what}. <a href="${d.make}" target="_blank" rel="noopener">Create one on ${d.name}</a> with:`;
+  $("#tok-scopes").innerHTML = d.scopes.map(x => `<li>${esc(x)}</li>`).join("");
+  $("#tok-host").value = s.host || d.host; $("#tok-host-hint").textContent = d.hostHint;
+  $("#tok-value").value = ""; $("#tok-value").type = "password";
+  $("#tok-show").textContent = "Show"; $("#tok-show").setAttribute("aria-pressed", "false");
+  $("#tok-err").hidden = true;
+  $("#tok-dialog").showModal(); $("#tok-value").focus();
+}
+function closeToken() { $("#tok-value").value = ""; $("#tok-value").type = "password"; $("#tok-dialog").close(); }
+$("#git-list").addEventListener("click", async e => {
+  const add = e.target.closest("[data-tok]"), rm = e.target.closest("[data-tok-clear]");
+  if (add) openToken(add.dataset.tok);
+  if (rm) { await api("/api/token/clear", { provider: rm.dataset.tokClear }).catch(() => {}); await loadStatus(); if (JOB) render(JOB); }
+});
+$("#tok-show").addEventListener("click", e => {
+  const show = $("#tok-value").type === "password";
+  $("#tok-value").type = show ? "text" : "password";
+  e.target.textContent = show ? "Hide" : "Show"; e.target.setAttribute("aria-pressed", String(show));
+});
+$("#tok-cancel").addEventListener("click", closeToken);
+$("#tok-dialog").addEventListener("close", () => { $("#tok-value").value = ""; });
+$("#tok-value").addEventListener("keydown", e => { if (e.key === "Enter") { e.preventDefault(); $("#tok-save").click(); } });
+$("#tok-save").addEventListener("click", async () => {
+  const btn = $("#tok-save"), err = $("#tok-err"), token = $("#tok-value").value.trim();
+  if (!token) { err.textContent = "Paste the token first."; err.hidden = false; return; }
+  btn.disabled = true; btn.textContent = "Checking"; err.hidden = true;
+  try {
+    await api("/api/token", { provider: TOK_P, token, host: $("#tok-host").value });
+    closeToken(); await loadStatus(); if (JOB) render(JOB);
+  } catch (x) { err.textContent = x.message; err.hidden = false; }
+  finally { btn.disabled = false; btn.textContent = "Check and save"; }
+});
 
 /* ---------- form ---------- */
 const MODES = {
@@ -768,7 +885,7 @@ function changeBlock(r, job) {
       return `<span class="ln ${k}${cm}">${esc(l)}</span>`;
     }).join("")}</pre></div>`;
   }).join('<div style="height:14px"></div>');
-  const tok = STATUS.github_token || STATUS.gitlab_token;
+  const tok = anyToken();
   return `<p class="lede">${esc(r.title)}. Only the failed processes change, in a file included last in nextflow.config.</p>
     <div class="change"><div>${fileHTML}</div>
       <div class="actions">
@@ -777,7 +894,7 @@ function changeBlock(r, job) {
         <button class="btn" type="button" id="act-copy">Copy description</button>
         <p>${job.kind === "demo" ? "The demo writes to a temporary copy of the example pipeline, which has no remote, so it can't open a merge request." :
           tok ? `Writes to <span class="mono">${esc(r.repo)}</span>. Merge requests go to the repo's origin remote.` :
-          "To open merge requests, start the console with GITHUB_TOKEN (or GITLAB_TOKEN) set."}</p>
+          `To open merge requests, <button class="linkbtn" type="button" data-tok-open="github">add a GitHub token</button> or <button class="linkbtn" type="button" data-tok-open="gitlab">a GitLab token</button>.`}</p>
         <div id="act-msg" aria-live="polite">${job.mr ? `<div class="result-msg ok">Merge request: <a href="${esc(job.mr.url)}" target="_blank" rel="noopener">${esc(job.mr.url)}</a></div>` :
           job.written ? `<div class="result-msg ok">Wrote ${job.written.map(w => `<code>${esc(w)}</code>`).join(", ")}.</div>` : ""}</div>
       </div></div>`;
@@ -798,6 +915,7 @@ function platformBlock(r) {
 
 function wireActions(job) {
   const msg = t => { $("#act-msg").innerHTML = t; };
+  for (const b of document.querySelectorAll("[data-tok-open]")) b.addEventListener("click", () => openToken(b.dataset.tokOpen));
   $("#act-copy")?.addEventListener("click", async () => {
     try { await navigator.clipboard.writeText(job.result.description); msg('<div class="result-msg ok">Description copied.</div>'); }
     catch { msg('<div class="result-msg err">The browser blocked the clipboard. Use the report in the CLI with --report instead.</div>'); }
