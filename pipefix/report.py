@@ -15,9 +15,10 @@ _SECRET = re.compile(r"\b(?:gh[pousr]_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{2
 def redact(text: str) -> str:
     """Hide AWS account IDs (also inside ARNs and ECR registry hosts) and GitHub/GitLab tokens before text
     leaves the machine."""
+    from .keys import known_keys
     from .vcs import known_tokens
     text = _SECRET.sub("<token>", text or "")
-    for t in known_tokens():
+    for t in known_tokens() + known_keys():
         text = text.replace(t, "<token>")
     return _ACCOUNT.sub("<account-id>", text)
 
@@ -40,7 +41,37 @@ def summary(diagnoses: list[Diagnosis]) -> str:
 def pr_title(patch: Patch) -> str:
     names = sorted({f.name for f in patch.fixes})
     head = ", ".join(names[:3]) + (f" +{len(names) - 3}" if len(names) > 3 else "")
-    return f"pipefix: fix failed pipeline tasks ({head})"
+    return f"pipefix{' (AI-researched)' if patch.ai_used else ''}: fix failed pipeline tasks ({head})"
+
+
+def _ai_section(patch: Patch) -> list[str]:
+    ai = patch.ai
+    if not ai:
+        return []
+    lines = ["## AI research", ""]
+    if ai.error:
+        return lines + [f"Not used: {_md(ai.error)}", ""]
+    used = ", ".join(f"`{n}`" for n in patch.ai_used) or "none"
+    lines += [f"pipefix searched AWS, Nextflow/nf-core and Terraform sources and asked `{_md(ai.model)}` to propose "
+              f"the fix. Every value was checked by pipefix before it was written (accepted forms only, failed "
+              f"processes only, within the platform's limits). AI-proposed fix used for: {used}. "
+              "**Review these values before merging.**", ""]
+    if ai.summary:
+        lines += [f"> {_md(ai.summary)}", ""]
+    for fx in ai.fixes:
+        lines.append(f"- **{_md(fx.name)}**: " + "; ".join(f"`{k} = {_md(v)}`" for k, v in fx.settings.items())
+                     + (f". {_md(fx.rationale)}" if fx.rationale else "")
+                     + (" " + " ".join(f"[{n}]" for n in fx.sources) if fx.sources else ""))
+    if ai.infrastructure:
+        lines += ["", "**Infrastructure advice (not applied)**", ""]
+        lines += [f"- {_md(it['title'])}: {_md(it['detail'])}" + (" " + " ".join(f"[{n}]" for n in it["sources"])
+                                                                 if it["sources"] else "") for it in ai.infrastructure]
+    if ai.rejected:
+        lines += ["", "**Rejected by pipefix's checks (not written)**", ""] + [f"- {_md(r)}" for r in ai.rejected]
+    if ai.sources:
+        lines += ["", "**Sources**", ""] + [f"{s['n']}. [{_md(s['title']) or s['url']}]({s['url']})"
+                                             for s in ai.sources]
+    return lines + [""]
 
 
 def _trace_rows(patch: Patch) -> list[str]:
@@ -108,6 +139,7 @@ def body(diagnoses: list[Diagnosis], patch: Patch, inv: Investigation | None = N
         for fx in patch.fixes:
             lines.append(f"- **{fx.name}**: " + "; ".join(_md(n) for n in fx.notes))
         lines.append("")
+    lines += _ai_section(patch)
     if patch.advisories:
         lines += ["## Needs a person", "", "Not safely fixable by pipeline config, so nothing was changed for these:", ""]
         for d in patch.advisories:
@@ -124,7 +156,9 @@ def body(diagnoses: list[Diagnosis], patch: Patch, inv: Investigation | None = N
             lines += ["", "Not readable or not found: " + _md(", ".join(sorted(set(inv.errors))[:15])) + "."]
         lines += ["", "</details>", ""]
     lines += ["---", "Opened by [pipefix](https://github.com/kuriangeorgebinu/pipefix). Diagnoses are rule-based "
-              "and cite the exact log lines and numbers they used. AWS account IDs are redacted."]
+              "and cite the exact log lines and numbers they used"
+              + ("; the fix values marked AI were researched by an LLM from the cited sources and checked by "
+                 "pipefix" if patch.ai_used else "") + ". AWS account IDs are redacted."]
     return "\n".join(lines)
 
 

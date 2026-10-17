@@ -3,7 +3,7 @@
 Security model: binds to 127.0.0.1 only; refuses requests whose Host header is not localhost (DNS rebinding);
 every state-changing request must carry the per-session token embedded in the page (so other websites in the
 same browser cannot trigger an investigation, a write or a merge request). AWS access is read-only as everywhere
-in pipefix. GitHub/GitLab tokens come from the environment or are pasted into the console once: either way they
+in pipefix. GitHub/GitLab tokens and the AI research keys (Serper, LLM) come from the environment or are pasted into the console once: either way they
 stay in this process's memory, are never written to disk, and are never sent back to the page (only "set", who
 it belongs to and its last four characters).
 """
@@ -22,7 +22,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import urlparse
 
-from .. import __version__, vcs
+from .. import __version__, keys, vcs
 from ..configtrace import load_repo, memory_literal_bytes
 from ..investigation import Investigation
 from ..models import Diagnosis
@@ -83,7 +83,7 @@ def serialize(inv: Investigation, diags: list[Diagnosis], patch: Patch, repo: Pa
             "cls": d.cls.value, "label": d.cls.label, "confidence": d.confidence,
             "explanation": redact(d.explanation), "recommendation": d.recommendation,
             "evidence": [redact(e) for e in d.evidence],
-            "fixed": fx is not None,
+            "fixed": fx is not None, "ai": f.simple_name in patch.ai_used,
             "fix": {"settings": {k: redact(v) for k, v in fx.settings.items()}, "notes": [redact(n) for n in fx.notes]}
             if fx else None,
             "exit_code": f.exit_code, "attempts": f.attempts, "spot_reclaims": f.spot_reclaims,
@@ -116,7 +116,20 @@ def serialize(inv: Investigation, diags: list[Diagnosis], patch: Patch, repo: Pa
         "diff": patch.diff(), "files": [rel for rel, (o, n) in patch.files.items() if o != n],
         "title": pr_title(patch) if patch.fixes else "", "description": body(diags, patch, inv),
         "config_files": cfg.files if cfg else [], "ondemand_queues": facts.get("ondemand_queues", []),
+        "ai": _ai_json(patch),
     }
+
+
+def _ai_json(patch: Patch) -> dict | None:
+    ai = patch.ai
+    if not ai:
+        return None
+    return {"model": ai.model, "error": ai.error, "summary": ai.summary, "used": patch.ai_used,
+            "queries": [redact(q) for q in ai.queries], "rejected": ai.rejected,
+            "sources": [{k: s[k] for k in ("n", "title", "url", "snippet", "site")} for s in ai.sources],
+            "fixes": [{"name": f.name, "settings": f.settings, "rationale": f.rationale, "sources": f.sources}
+                      for f in ai.fixes],
+            "infrastructure": ai.infrastructure}
 
 
 # ---------- jobs ----------
@@ -162,8 +175,12 @@ def _run_investigation(job: dict, req: dict) -> None:
         if (repo / "nextflow.config").is_file():
             _stage(job, "Tracing the pipeline config")
             cfg = load_repo(repo)
+            ai = None
+            if req.get("ai"):
+                from ..research import research
+                ai = research(inv, diags, cfg, tuple(req.get("nf_profiles") or ()), on_stage=lambda n: _stage(job, n))
             _stage(job, "Building the fix")
-            patch = build_patch(diags, repo, inv=inv, cfg=cfg, profiles=tuple(req.get("nf_profiles") or ()))
+            patch = build_patch(diags, repo, inv=inv, cfg=cfg, profiles=tuple(req.get("nf_profiles") or ()), ai=ai)
         else:
             _stage(job, "No nextflow.config in the repo folder, so only diagnosing")
             patch = Patch({}, [], diags, {})
@@ -270,7 +287,8 @@ class Handler(BaseHTTPRequestHandler):
         if u.path == "/api/status":
             return self._json(200, {"version": __version__, **STATUS, "cwd": os.getcwd(),
                                     "cwd_is_pipeline": Path("nextflow.config").is_file(),
-                                    "tokens": {p: vcs.token_status(p) for p in vcs.PROVIDERS}})
+                                    "tokens": {p: vcs.token_status(p) for p in vcs.PROVIDERS},
+                                    "keys": keys.status()})
         if u.path == "/api/jobs":
             return self._json(200, [{k: j[k] for k in ("id", "kind", "label", "status", "created")} |
                                     {"failures": len(j["result"]["failures"]) if j["result"] else None,
@@ -300,6 +318,11 @@ class Handler(BaseHTTPRequestHandler):
                 return self._json(200, vcs.set_token(req.get("provider", ""), req.get("token", ""), req.get("host")))
             if u.path == "/api/token/clear":
                 return self._json(200, vcs.clear_token(req.get("provider", "")))
+            if u.path == "/api/key":
+                return self._json(200, keys.set_key(req.get("kind", ""), req.get("key", ""), req.get("base_url", ""),
+                                                    req.get("model", "")))
+            if u.path == "/api/key/clear":
+                return self._json(200, keys.clear(req.get("kind", "")))
             if u.path == "/api/investigate":
                 label = {"demo": "Demo run", "batch-queue": f"Queue {req.get('value', '')}",
                          "batch-jobs": "Batch jobs", "omics-run": f"HealthOmics run {req.get('value', '')}"}.get(

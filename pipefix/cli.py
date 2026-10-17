@@ -53,7 +53,15 @@ def _deliver(a: argparse.Namespace, diagnoses: list[Diagnosis], inv: Investigati
     """Shared tail of `fix` and `investigate`: build the patch, show it, and apply / open the MR."""
     repo = Path(a.repo)
     cfg = load_repo(repo)
-    patch = build_patch(diagnoses, repo, a.min_confidence, inv, cfg, tuple(a.nf_profile or []))
+    ai = None
+    if a.ai_fix:
+        from .research import research
+        ai = research(inv, diagnoses, cfg, tuple(a.nf_profile or []), on_stage=lambda n: print(f"  {n}"))
+        if ai.error:
+            print(f"[warn] {ai.error} Using pipefix's rule-based fix.")
+        for r in ai.rejected:
+            print(f"[ai rejected] {r}")
+    patch = build_patch(diagnoses, repo, a.min_confidence, inv, cfg, tuple(a.nf_profile or []), ai=ai)
     text = body(diagnoses, patch, inv)
     if a.report:
         Path(a.report).write_text(text, encoding="utf-8")
@@ -108,6 +116,11 @@ def main(argv: list[str] | None = None) -> int:
             s.add_argument("--min-confidence", type=float, default=0.6)
             s.add_argument("--nf-profile", action="append", help="Nextflow profile(s) the run used")
             s.add_argument("--report", help="also save the full investigation report (markdown)")
+            s.add_argument("--env-file", action="append", help="read SERPER_API_KEY / DEEPSEEK_API_KEY etc. from this "
+                                                               ".env file (only those keys)")
+            s.add_argument("--ai-fix", action="store_true",
+                           help="let an LLM research the fix in AWS/Nextflow/Terraform docs (via Serper); pipefix "
+                                "checks every value before writing it. Needs SERPER_API_KEY and an LLM key")
 
     for name in ("diagnose", "fix"):
         s = sub.add_parser(name, help="from files you already have")
@@ -134,8 +147,19 @@ def main(argv: list[str] | None = None) -> int:
     s = sub.add_parser("ui", help="open the pipefix console in your browser")
     s.add_argument("--port", type=int, default=8787)
     s.add_argument("--no-browser", action="store_true")
+    s.add_argument("--env-file", action="append", help="read the AI research keys (SERPER_API_KEY, DEEPSEEK_API_KEY, "
+                                                       "...) from this .env file, e.g. the review crew's")
 
     a = p.parse_args(argv)
+    import os
+    from . import keys
+    for f in (getattr(a, "env_file", None) or []) + ([os.environ["PIPEFIX_ENV_FILE"]]
+                                                       if os.environ.get("PIPEFIX_ENV_FILE") else []):
+        try:
+            found = keys.load_env_file(f)
+            print(f"Read {', '.join(found) or 'no pipefix keys'} from {f}")
+        except OSError as e:
+            print(f"pipefix: can't read {f}: {e.strerror}", file=sys.stderr)
     if a.cmd == "ui":
         from .ui.server import serve
         serve(a.port, not a.no_browser)

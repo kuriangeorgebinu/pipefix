@@ -43,6 +43,8 @@ class Patch:
     global_settings: dict[str, str]
     findings: list[Finding] = field(default_factory=list)
     traces: dict[str, ProcessTrace] = field(default_factory=dict)
+    ai: object = None                           # research.AIResult when the AI researched the fix
+    ai_used: list[str] = field(default_factory=list)   # processes whose fix came from the AI
 
     @property
     def empty(self) -> bool:
@@ -228,8 +230,30 @@ def _spot_fix(d: Diagnosis, tr: ProcessTrace | None, facts: dict, global_setting
     return fix
 
 
+def _ai_fix(aifx, ai, tr: ProcessTrace | None, rule: ProcessFix | None, findings: list[Finding]) -> ProcessFix:
+    fix = ProcessFix(aifx.name, dict(aifx.settings))
+    fix.notes.append(f"pipefix AI ({ai.model}): {aifx.rationale}".strip())
+    for directive in aifx.settings:
+        cur = tr.effective(directive) if tr else None
+        if cur:
+            fix.notes.append(f"was {directive} {cur.value.strip()} from {cur.where} ({cur.selector})")
+    fix.notes += [f"source [{s['n']}] {s['url']}" for s in ai.cite(aifx.sources)]
+    if rule and rule.settings != fix.settings:
+        findings.append(Finding("pipefix's rules would have fixed this differently",
+                                "Rule-based fix: " + "; ".join(f"{k} = {v}" for k, v in rule.settings.items())
+                                + ". The AI-researched fix above was used instead.", "info", aifx.name))
+    return fix
+
+
+_OWN_NOTES = ("pipefix:", "pipefix AI", "source [", "was ", "keeps ", "capped ", "moved ", "Java tool", "long task")
+
+
 def build_patch(diagnoses: list[Diagnosis], repo: str | Path, min_confidence: float = 0.6,
-                inv: Investigation | None = None, cfg: RepoConfig | None = None, profiles: tuple[str, ...] = ()) -> Patch:
+                inv: Investigation | None = None, cfg: RepoConfig | None = None, profiles: tuple[str, ...] = (),
+                ai=None) -> Patch:
+    """`ai`: a research.AIResult; its checked fixes replace the rule-based ones for the processes they cover."""
+    ai_by_name = {fx.name: fx for fx in (ai.fixes if ai else [])}
+    ai_used: list[str] = []
     repo = Path(repo)
     cfg = cfg or load_repo(repo)
     facts = inv.facts if inv else {}
@@ -275,14 +299,16 @@ def build_patch(diagnoses: list[Diagnosis], repo: str | Path, min_confidence: fl
                 fix = _time_fix(d, tr)
             elif d.cls == FailureClass.SPOT_INTERRUPTION and f.source != "healthomics":
                 fix = _spot_fix(d, tr, facts, global_settings)
+        if f.simple_name in ai_by_name and not f.process.startswith("("):
+            fix = _ai_fix(ai_by_name.pop(f.simple_name), ai, tr, fix, findings)
+            ai_used.append(fix.name)
         if fix is None:
             advisories.append(d)
             continue
         cur = blocks.get(fix.name)
         if cur:  # merge into the existing block: keep its other settings, replace pipefix's own notes
             cur.settings.update(fix.settings)
-            cur.notes = [n for n in cur.notes if not n.startswith(("pipefix:", "was ", "keeps ", "capped ", "moved ",
-                                                                   "Java tool", "long task"))] + fix.notes
+            cur.notes = [n for n in cur.notes if not n.startswith(_OWN_NOTES)] + fix.notes
             fix = cur
         blocks[fix.name] = fix
         if fix not in fixes:
@@ -300,7 +326,7 @@ def build_patch(diagnoses: list[Diagnosis], repo: str | Path, min_confidence: fl
         new_main = old_main.rstrip("\n") + ("\n\n" if old_main else "") + \
             f"// Fixes proposed by pipefix (keep this last so it overrides the defaults above)\n{INCLUDE_LINE}\n"
     return Patch({CONFIG_REL: (old_cfg, new_cfg), "nextflow.config": (old_main, new_main)},
-                 fixes, advisories, global_settings, findings, traces)
+                 fixes, advisories, global_settings, findings, traces, ai, ai_used)
 
 
 __all__ = ["build_patch", "Patch", "ProcessFix", "CONFIG_REL", "INCLUDE_LINE", "grows_with_attempt"]

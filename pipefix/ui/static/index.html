@@ -349,6 +349,31 @@ dialog .field small { color: var(--ink-3); font-size: 12.5px; }
 dialog .err { color: var(--T); font-size: 13.5px; margin: 12px 0 0; }
 dialog .scopes { font-size: 13.5px; margin: 8px 0 0; padding-left: 18px; }
 
+/* ---------- AI research ---------- */
+.check { display: grid; grid-template-columns: 18px 1fr; gap: 4px 10px; margin-top: 16px; font-size: 13.5px; align-items: start; }
+.check input { margin: 3px 0 0; width: 16px; height: 16px; accent-color: var(--C); }
+.check small { grid-column: 2; color: var(--ink-3); font-size: 12px; }
+.badge { display: inline-flex; align-items: center; gap: 5px; font-size: 11px; font-weight: 600; letter-spacing: .02em;
+  padding: 2px 7px; border-radius: 999px; background: var(--C-wash); color: var(--C); vertical-align: middle; }
+.cites { list-style: none; margin: 10px 0 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.cites li { display: grid; grid-template-columns: 26px 1fr; gap: 10px; font-size: 13.5px; }
+.cites .n { width: 22px; height: 22px; border-radius: 6px; display: grid; place-items: center; font-size: 11.5px; font-weight: 600;
+  background: var(--surface-2); color: var(--ink-2); font-family: var(--mono); }
+.cites li.used .n { background: var(--C); color: #fff; }
+.cites a { font-weight: 500; text-decoration: none; }
+.cites a:hover { text-decoration: underline; }
+.cites .host { color: var(--ink-3); font-size: 12px; font-family: var(--mono); }
+.cites p { margin: 2px 0 0; color: var(--ink-2); font-size: 13px; }
+.site { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .04em; margin-left: 6px; }
+.site.aws { color: var(--G); } .site.nextflow { color: var(--A); } .site.terraform { color: var(--C); }
+.aibox { margin-top: 18px; border: 1px solid color-mix(in srgb, var(--C) 40%, var(--rule)); border-radius: var(--r-panel); background: var(--surface); padding: 18px 20px; }
+.aibox h3 { font-size: 15px; font-weight: 600; display: flex; gap: 10px; align-items: center; }
+.aibox blockquote { margin: 12px 0 0; padding: 0 0 0 12px; border-left: 3px solid var(--C); color: var(--ink); font-size: 14.5px; }
+.aibox h4 { font-size: 13px; font-weight: 600; margin: 18px 0 0; color: var(--ink-2); }
+.aibox ul.plain { margin: 8px 0 0; padding-left: 18px; font-size: 13.5px; color: var(--ink-2); }
+.aibox ul.plain li + li { margin-top: 4px; }
+.rej { color: var(--T); }
+
 /* ---------- responsive ---------- */
 @media (max-width: 1080px) {
   .change { grid-template-columns: 1fr; }
@@ -415,6 +440,8 @@ dialog .scopes { font-size: 13.5px; margin: 8px 0 0; padding-left: 18px; }
           <div class="field"><label for="region">Region</label><input id="region" class="code" placeholder="from your AWS config"></div>
           <div class="field"><label for="nfp">Nextflow profiles the run used</label><input id="nfp" class="code" placeholder="awsbatch"></div>
         </details>
+        <label class="check" id="f-ai"><input type="checkbox" id="ai"><span>Research the fix with AI</span>
+          <small>Searches AWS, Nextflow and Terraform docs and lets an LLM propose the fix, with sources. pipefix checks every value. Sends error lines and config, never data.</small></label>
         <p class="note" id="demo-note" hidden>Runs against a built-in example account with four failed tasks and an nf-core style pipeline. Nothing touches AWS or your files.</p>
         <button class="btn primary run-btn" id="run" type="submit">Investigate</button>
         <p class="note">Read-only in AWS. pipefix only changes your repo when you choose Write changes or Open merge request.</p>
@@ -424,6 +451,11 @@ dialog .scopes { font-size: 13.5px; margin: 8px 0 0; padding-left: 18px; }
       <h2 id="git-h">Merge requests</h2>
       <ul id="git-list"><li><i></i><span>Checking</span></li></ul>
       <p class="note">Tokens stay in this console's memory: never saved to disk, never shown again. Stopping pipefix forgets them.</p>
+    </section>
+    <section class="git" aria-labelledby="ai-h">
+      <h2 id="ai-h">AI fix research</h2>
+      <ul id="key-list"><li><i></i><span>Checking</span></li></ul>
+      <p class="note">Serper searches AWS, Nextflow and Terraform docs; the LLM proposes the fix from them. Keys stay in memory, like tokens.</p>
     </section>
     <section class="history" aria-labelledby="hist-h">
       <h2 id="hist-h">This session</h2>
@@ -467,6 +499,26 @@ dialog .scopes { font-size: 13.5px; margin: 8px 0 0; padding-left: 18px; }
   <div class="row">
     <button class="btn" type="button" id="tok-cancel">Cancel</button>
     <button class="btn primary" type="button" id="tok-save">Check and save</button>
+  </div>
+</dialog>
+
+<dialog id="key-dialog" aria-labelledby="key-h">
+  <h2 id="key-h">Add a key</h2>
+  <p id="key-intro"></p>
+  <div class="field" id="key-base-f"><label for="key-base">Base URL</label><input id="key-base" class="code" autocomplete="off" spellcheck="false"><small>Any OpenAI-compatible endpoint.</small></div>
+  <div class="field" id="key-model-f"><label for="key-model">Model</label><input id="key-model" class="code" autocomplete="off" spellcheck="false"></div>
+  <div class="field">
+    <label for="key-value">API key</label>
+    <div class="secret">
+      <input id="key-value" type="password" autocomplete="off" autocapitalize="off" spellcheck="false" data-1p-ignore data-lpignore="true">
+      <button class="btn" type="button" id="key-show" aria-pressed="false" aria-controls="key-value">Show</button>
+    </div>
+    <small>Checked with the provider, then kept in memory only. Tip: start pipefix with <code>--env-file</code> to reuse keys from a .env file.</small>
+  </div>
+  <p class="err" id="key-err" role="alert" hidden></p>
+  <div class="row">
+    <button class="btn" type="button" id="key-cancel">Cancel</button>
+    <button class="btn primary" type="button" id="key-save">Check and save</button>
   </div>
 </dialog>
 
@@ -520,7 +572,8 @@ async function loadStatus() {
   try {
     STATUS = await api("/api/status");
     $("#ver").textContent = "v" + STATUS.version;
-    renderTokens();
+    renderTokens(); renderKeys();
+    if (store.get("pipefix-ai") === "1" && aiReady()) $("#ai").checked = true;
     const c = $("#conn"), a = STATUS.aws || {};
     if (a.state === "checking") { setTimeout(loadStatus, 1500); return; }
     c.classList.toggle("ok", a.state === "ok");
@@ -597,6 +650,67 @@ $("#tok-save").addEventListener("click", async () => {
   finally { btn.disabled = false; btn.textContent = "Check and save"; }
 });
 
+/* ---------- AI research keys ---------- */
+const KEYS = {
+  serper: { name: "Serper", what: "Google search of the docs", make: "https://serper.dev/api-key" },
+  llm: { name: "LLM", what: "proposes the fix", make: "https://platform.deepseek.com/api_keys" },
+};
+const aiReady = () => (STATUS.keys?.serper?.set && STATUS.keys?.llm?.set) || false;
+function renderKeys() {
+  const k = STATUS.keys || {};
+  $("#key-list").innerHTML = Object.entries(KEYS).map(([kind, d]) => {
+    const s = k[kind] || {};
+    const hint = s.hint ? ` · <code>…${esc(s.hint)}</code>` : "";
+    const model = kind === "llm" && s.set ? ` · <code>${esc(s.model)}</code>` : "";
+    const sub = !s.set ? `Not set. ${d.what[0].toUpperCase() + d.what.slice(1)}.` :
+      s.source === "console" ? `Added in the console${model}${hint}` : `From <code>${esc(s.source)}</code>${model}${hint}`;
+    const act = s.set && s.source === "console"
+      ? `<button class="linkbtn quiet" type="button" data-key-clear="${kind}">Remove</button>`
+      : `<button class="linkbtn${s.set ? " quiet" : ""}" type="button" data-key="${kind}">${s.set ? "Replace" : "Add key"}</button>`;
+    return `<li class="${s.set ? "on" : ""}"><i aria-hidden="true"></i><b>${d.name}</b>${act}<small>${sub}</small></li>`;
+  }).join("");
+  const box = $("#ai");
+  box.disabled = !aiReady();
+  if (!aiReady()) box.checked = false;
+  $("#f-ai").title = aiReady() ? "" : "Add a Serper key and an LLM key first";
+}
+let KEY_KIND = "serper";
+function openKey(kind) {
+  KEY_KIND = kind; const d = KEYS[kind], s = (STATUS.keys || {})[kind] || {};
+  $("#key-h").textContent = `Add a ${d.name} key`;
+  $("#key-intro").innerHTML = `${kind === "serper" ? "Used to search AWS, Nextflow and Terraform documentation." : "The model reads the search results and proposes the fix; pipefix checks every value."} <a href="${d.make}" target="_blank" rel="noopener">Get a key</a>.`;
+  $("#key-base-f").hidden = $("#key-model-f").hidden = kind !== "llm";
+  $("#key-base").value = (STATUS.keys?.llm?.base_url) || "https://api.deepseek.com";
+  $("#key-model").value = (STATUS.keys?.llm?.model) || "deepseek-chat";
+  $("#key-value").value = ""; $("#key-value").type = "password"; $("#key-show").textContent = "Show";
+  $("#key-err").hidden = true; $("#key-dialog").showModal(); $("#key-value").focus();
+}
+$("#key-list").addEventListener("click", async e => {
+  const add = e.target.closest("[data-key]"), rm = e.target.closest("[data-key-clear]");
+  if (add) openKey(add.dataset.key);
+  if (rm) { await api("/api/key/clear", { kind: rm.dataset.keyClear }).catch(() => {}); await loadStatus(); }
+});
+$("#key-show").addEventListener("click", e => {
+  const show = $("#key-value").type === "password"; $("#key-value").type = show ? "text" : "password";
+  e.target.textContent = show ? "Hide" : "Show"; e.target.setAttribute("aria-pressed", String(show));
+});
+$("#key-cancel").addEventListener("click", () => { $("#key-value").value = ""; $("#key-dialog").close(); });
+$("#key-dialog").addEventListener("close", () => { $("#key-value").value = ""; $("#key-value").type = "password"; });
+$("#key-value").addEventListener("keydown", e => { if (e.key === "Enter") { e.preventDefault(); $("#key-save").click(); } });
+$("#key-save").addEventListener("click", async () => {
+  const btn = $("#key-save"), err = $("#key-err"), key = $("#key-value").value.trim();
+  if (!key) { err.textContent = "Paste the key first."; err.hidden = false; return; }
+  btn.disabled = true; btn.textContent = "Checking"; err.hidden = true;
+  try {
+    await api("/api/key", { kind: KEY_KIND, key, base_url: KEY_KIND === "llm" ? $("#key-base").value : "",
+                            model: KEY_KIND === "llm" ? $("#key-model").value : "" });
+    $("#key-dialog").close(); await loadStatus();
+  } catch (x) { err.textContent = x.message; err.hidden = false; }
+  finally { btn.disabled = false; btn.textContent = "Check and save"; }
+});
+(function () { const v = store.get("pipefix-ai"); if (v === "1") $("#ai").checked = true;
+  $("#ai").addEventListener("change", e => store.set("pipefix-ai", e.target.checked ? "1" : "0")); })();
+
 /* ---------- form ---------- */
 const MODES = {
   "batch-queue": { label: "Queue name", ph: "spot-queue", hint: "pipefix finds the jobs that failed in this queue." },
@@ -631,7 +745,7 @@ $("#form").addEventListener("submit", async e => {
   e.preventDefault();
   const req = { mode: MODE, value: $("#value").value, since: $("#since").value, repo: $("#repo").value,
                 profile: $("#profile").value, region: $("#region").value,
-                nf_profiles: $("#nfp").value.split(/[\s,]+/).filter(Boolean) };
+                nf_profiles: $("#nfp").value.split(/[\s,]+/).filter(Boolean), ai: $("#ai").checked };
   if (MODE !== "demo" && !req.value.trim()) { $("#value").focus(); $("#value").setCustomValidity("Enter a value first."); $("#value").reportValidity(); return; }
   $("#value").setCustomValidity("");
   $("#run").disabled = true;
@@ -724,6 +838,7 @@ function render(job) {
       <h2 id="chg-h">Proposed change</h2>
       ${changeBlock(r, job)}
     </section>
+    ${aiBlock(r)}
     ${platformBlock(r)}
     <details class="audit"><summary>What pipefix read: ${r.calls.reduce((a, c) => a + c.count, 0)} read-only AWS calls</summary>
       <div class="calls">${r.calls.map(c => `<code>${esc(c.call)}${c.count > 1 ? " ×" + c.count : ""}</code>`).join("")}</div>
@@ -745,7 +860,7 @@ function lane(f) {
     <div class="lane-name"><strong>${esc(f.name)}</strong>${f.tag ? `<span>${esc(f.tag)}</span>` : ""}
       <div class="lane-cls"><span class="dot" style="background:var(--${color})"></span>${esc(f.label)}</div></div>
     <div class="lane-viz">${viz(f)}</div>
-    <div class="lane-out ${f.fixed ? "fixed" : "you"}"><b>${f.fixed ? "Config fix" : "Needs you"}</b><small>${Math.round(f.confidence * 100)}% confident</small></div>
+    <div class="lane-out ${f.fixed ? "fixed" : "you"}"><b>${f.fixed ? (f.ai ? "AI fix" : "Config fix") : "Needs you"}</b><small>${Math.round(f.confidence * 100)}% confident</small></div>
   </button>`;
 }
 
@@ -844,7 +959,7 @@ function panel(f) {
                    ["Defined in", f.defined_in], ["Labels", (f.labels || []).join(", ")], ["Work folder", f.work_dir],
                    ["Name from", f.name_source]].filter(([, v]) => v !== null && v !== undefined && v !== "");
     return `<ul class="evidence">${f.evidence.map(e => `<li><span>${ticks(e.replace(/^log: /, "Log: "))}</span></li>`).join("")}</ul>
-      ${f.fixed ? `<div class="rec fixed"><b>What the fix does</b><ul>${f.fix.notes.map(n => `<li>${ticks(n.replace(/^pipefix: /, ""))}</li>`).join("")}</ul></div>`
+      ${f.fixed ? `<div class="rec fixed"><b>What the fix does</b>${f.ai ? ' <span class="badge">AI-researched</span>' : ""}<ul>${f.fix.notes.filter(n => !n.startsWith("source [")).map(n => `<li>${ticks(n.replace(/^pipefix: /, "").replace(/^pipefix AI \([^)]*\): /, ""))}</li>`).join("")}</ul>${f.ai ? citesFor(f.name) : ""}</div>`
                 : `<div class="rec"><b>What to do: </b>${ticks(f.recommendation)}</div>`}
       <dl class="facts">${facts.map(([k, v]) => `<div><dt>${esc(k)}</dt><dd class="${/Job|Image|Defined|Work/.test(k) ? "mono" : ""}">${esc(v)}</dd></div>`).join("")}</dl>`;
   }
@@ -898,6 +1013,36 @@ function changeBlock(r, job) {
         <div id="act-msg" aria-live="polite">${job.mr ? `<div class="result-msg ok">Merge request: <a href="${esc(job.mr.url)}" target="_blank" rel="noopener">${esc(job.mr.url)}</a></div>` :
           job.written ? `<div class="result-msg ok">Wrote ${job.written.map(w => `<code>${esc(w)}</code>`).join(", ")}.</div>` : ""}</div>
       </div></div>`;
+}
+
+function host(u) { try { return new URL(u).host; } catch { return ""; } }
+function citeList(sources, used) {
+  return `<ol class="cites">${sources.map(s => `<li class="${used.has(s.n) ? "used" : ""}"><span class="n" aria-label="source ${s.n}">${s.n}</span><div>
+    <a href="${esc(s.url)}" target="_blank" rel="noopener noreferrer">${esc(s.title || s.url)}</a><span class="site ${esc(s.site)}">${esc(s.site)}</span>
+    <div class="host">${esc(host(s.url))}</div>${s.snippet ? `<p>${esc(s.snippet)}</p>` : ""}</div></li>`).join("")}</ol>`;
+}
+function citesFor(name) {
+  const ai = JOB?.result?.ai, fx = ai?.fixes.find(x => x.name === name);
+  if (!fx || !fx.sources.length) return "";
+  const used = new Set(fx.sources);
+  return `<h4 style="font-size:13px;margin:14px 0 0;color:var(--ink-2)">Sources used for this fix</h4>${citeList(ai.sources.filter(s => used.has(s.n)), used)}`;
+}
+function aiBlock(r) {
+  const ai = r.ai;
+  if (!ai) return "";
+  if (ai.error) return `<section class="section"><div class="aibox"><h3>AI research <span class="badge">not used</span></h3><p class="note">${esc(ai.error)} The fix above is pipefix's rule-based one.</p></div></section>`;
+  const used = new Set(ai.fixes.flatMap(f => f.sources).concat(ai.infrastructure.flatMap(i => i.sources)));
+  return `<section class="section" aria-labelledby="ai-sec-h"><h2 id="ai-sec-h">How the AI researched this fix</h2>
+    <p class="lede">pipefix searched AWS, Nextflow and Terraform docs, asked <code>${esc(ai.model)}</code> to propose the fix from them, and checked every value before writing it. Highlighted sources were cited.</p>
+    <div class="aibox">
+      <h3>Proposed fix <span class="badge">AI-researched</span></h3>
+      ${ai.summary ? `<blockquote>${esc(ai.summary)}</blockquote>` : ""}
+      ${ai.fixes.length ? `<ul class="plain">${ai.fixes.map(f => `<li><b>${esc(f.name)}</b>: ${Object.entries(f.settings).map(([k, v]) => `<code>${esc(k)} = ${esc(v)}</code>`).join(", ")}${f.rationale ? `. ${esc(f.rationale)}` : ""} ${f.sources.map(n => `<a href="#src-${n}">[${n}]</a>`).join(" ")}</li>`).join("")}</ul>` : `<p class="note">The AI proposed no config change that passed pipefix's checks.</p>`}
+      ${ai.infrastructure.length ? `<h4>Infrastructure advice (not applied)</h4><ul class="plain">${ai.infrastructure.map(i => `<li><b>${esc(i.title)}</b>: ${esc(i.detail)} ${i.sources.map(n => `<a href="#src-${n}">[${n}]</a>`).join(" ")}</li>`).join("")}</ul>` : ""}
+      ${ai.rejected.length ? `<h4>Rejected by pipefix's checks</h4><ul class="plain">${ai.rejected.map(x => `<li class="rej">${esc(x)}</li>`).join("")}</ul>` : ""}
+      <h4>Sources</h4>${citeList(ai.sources, used).replace(/<li class/g, (m, i) => m).replace(/<span class="n" aria-label="source (\d+)">/g, '<span class="n" id="src-$1" aria-label="source $1">')}
+      <details class="audit" style="margin-top:16px"><summary>Searches it ran (${ai.queries.length})</summary><div class="calls">${ai.queries.map(q => `<code>${esc(q)}</code>`).join("")}</div></details>
+    </div></section>`;
 }
 
 function platformBlock(r) {
