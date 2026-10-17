@@ -113,6 +113,7 @@ def test_ai_fix_is_researched_checked_cited_and_written(repo, failure, ai_keys):
     assert 'source [1] says: "The task container uses the number of vCPUs' in text          # quotes in the MR
     assert res.fixes[0].sources == [1, 2] and len(res.fixes[0].evidence) == 3
     assert res.infrastructure[0]["evidence"][0]["n"] == 1
+    assert all("\n" not in e["quote"] for e in res.fixes[0].evidence)
     assert pr_title(patch).startswith("pipefix (AI-researched)")
 
 

@@ -426,7 +426,7 @@ def research(inv: Investigation | None, diagnoses: list[Diagnosis], cfg: RepoCon
                 res.rejected.append(f"{label}: quote from [{n if n is not None else '?'}] rejected, {why}: "
                                     f"\"{quote[:90]}{'...' if len(quote) > 90 else ''}\"")
             else:
-                ok.append({"setting": str(ev.get("setting", "")).strip(), "n": n, "quote": redact(quote)})
+                ok.append({"setting": str(ev.get("setting", "")).strip(), "n": n, "quote": redact(" ".join(quote.split()))})
         return ok
 
     for fx in out.get("fixes") or []:
