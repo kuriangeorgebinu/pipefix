@@ -6,8 +6,12 @@ How it stays safe and auditable:
     the config lines that set its resources, platform facts (instance memory, caps). Account IDs and tokens are
     redacted first. No genomic data, no input files. Search queries are cleaned of paths and S3 URIs.
   * Sources: Serper (Google) restricted to docs.aws.amazon.com, nextflow.io / nf-co.re and Terraform
-    (registry + GitHub). The top pages are fetched (allow-listed hosts only) and numbered; the model must cite
-    them by number, and every cited source is linked in the MR.
+    (registry + GitHub). Every result page is fetched (allow-listed hosts only) and READ: the model gets the
+    relevant passages of each page, not search snippets.
+  * Strict grounding rule: every value the model proposes, and every piece of infrastructure advice, must be
+    backed by a verbatim quote from a page pipefix fetched. pipefix checks that the quote really is in that
+    page's text; a value without a verified quote is rejected, however plausible. The quotes are shown in the
+    console and the MR, so the argument for the fix is the sources' own words.
   * The model writes a structured proposal, never config text. Each value is checked against a strict grammar
     (Nextflow closures run code, so only `{ N.GB * task.attempt }`-style values are accepted), against the
     failed processes, and against the platform (memory above the largest instance is refused). Anything that
@@ -38,7 +42,10 @@ SITES = {
 FETCH_HOSTS = ("docs.aws.amazon.com", "nextflow.io", "www.nextflow.io", "training.nextflow.io", "nf-co.re",
                "registry.terraform.io", "github.com", "raw.githubusercontent.com")
 ALLOWED = ("memory", "time", "cpus", "errorStrategy", "maxRetries", "queue", "disk")
-MAX_SOURCES, FETCH_TOP, PAGE_CHARS = 12, 4, 3500
+MAX_SOURCES, PAGE_CHARS, EXCERPT_CHARS = 12, 120_000, 5000
+QUOTE_MIN, QUOTE_MAX = 30, 400
+_KEYWORDS = re.compile(r"memory|GiB|\bGB\b|retr(y|ies)|errorStrategy|exit ?(status|code)|maxRetries|instance|vCPU|"
+                       r"cpus|out of memory|OOM|resourceLimits|task\.attempt|reserve|limit|version", re.I)
 
 
 @dataclass
@@ -47,6 +54,7 @@ class AIFix:
     settings: dict[str, str]
     rationale: str
     sources: list[int]
+    evidence: list[dict] = field(default_factory=list)   # verified quotes: {setting, n, quote}
 
 
 @dataclass
@@ -83,11 +91,50 @@ class Http:
 
 
 def _page_text(raw: str) -> str:
-    raw = re.sub(r"(?is)<(script|style|nav|header|footer|svg)\b.*?</\1>", " ", raw)
+    raw = re.sub(r"(?is)<(script|style|nav|header|footer|svg|noscript)\b.*?</\1>", " ", raw)
     m = re.search(r"(?is)<(main|article)\b.*?</\1>", raw)
     raw = m.group(0) if m else raw
+    raw = re.sub(r"(?i)<br\s*/?>|</(p|li|h\d|tr|pre|div|dt|dd)>", "\n", raw)
     text = html.unescape(re.sub(r"(?s)<[^>]+>", " ", raw))
-    return re.sub(r"\s+", " ", text).strip()[:PAGE_CHARS]
+    text = re.sub(r"[ \t\r\f\v]+", " ", text)
+    return re.sub(r"\n\s*\n+", "\n", text).strip()[:PAGE_CHARS]
+
+
+def _norm(text: str) -> str:
+    """For quote matching: case, whitespace, quote marks and dashes don't matter."""
+    text = text.translate(str.maketrans({"\u2018": "'", "\u2019": "'", "\u201c": '"', "\u201d": '"', "\u2013": "-",
+                                         "\u2014": "-", "\u00a0": " ", "\u2026": "..."}))
+    return re.sub(r"\s+", " ", text).strip().lower()
+
+
+def excerpt(text: str, limit: int = EXCERPT_CHARS) -> str:
+    """The passages of a page that talk about resources, retries and limits (what the model must read)."""
+    lines = [ln.strip() for ln in text.split("\n") if len(ln.strip()) > 25]
+    keep, size = [], 0
+    for i, ln in enumerate(lines):
+        if _KEYWORDS.search(ln):
+            for j in (i - 1, i, i + 1):
+                if 0 <= j < len(lines) and j not in keep:
+                    keep.append(j)
+    out = []
+    for j in sorted(keep) or range(min(len(lines), 15)):
+        if size + len(lines[j]) > limit:
+            break
+        out.append(lines[j])
+        size += len(lines[j]) + 1
+    return "\n".join(out)
+
+
+def verify_quote(quote: str, source: dict | None) -> str | None:
+    """None if the quote is verbatim in the page pipefix read, else why not."""
+    if not source or not source.get("text"):
+        return "cites a page pipefix could not read"
+    q = _norm(quote or "")
+    if len(q) < QUOTE_MIN:
+        return "quote too short to support a claim"
+    if len(q) > QUOTE_MAX:
+        return "quote too long (quote the sentence, not the page)"
+    return None if q in _norm(source["text"]) else f"quote is not in source [{source['n']}]"
 
 
 def _allowed_host(url: str) -> bool:
@@ -153,12 +200,24 @@ Rules: short keyword queries (under 12 words). Never include sample names, file 
 or run IDs. Use at least one "aws" query and one "nextflow" query; add "terraform" queries only if the fix may
 need infrastructure (compute environment, instance types, IAM, HealthOmics run storage)."""
 
-FIX_PROMPT = """You are a senior bioinformatics platform engineer. Propose the fix for the failed tasks below,
-using the numbered sources. Return ONLY JSON:
-{"summary": "2-3 sentences: root cause and fix",
+FIX_PROMPT = """You are a senior bioinformatics platform engineer. Propose the fix for the failed tasks below.
+You have READ the numbered sources: each has the relevant passages of the page under "text".
+
+STRICT RULE: your argument must be built on the sources. For EVERY setting you propose, and every piece of
+infrastructure advice, give at least one VERBATIM quote (copied exactly, 30-400 characters, one or two
+sentences) from a source's "text" that supports it, with the source number. pipefix checks each quote against
+the page it downloaded; a setting without a quote that is really in the page is rejected. Do not quote search
+snippets, do not paraphrase inside quotes, do not cite a source whose text says nothing about the claim. Your
+rationale must reason FROM those quotes (say what the source says, then how it applies to this task's numbers).
+If no source supports a change, do not propose it.
+
+Return ONLY JSON:
+{"summary": "2-3 sentences: root cause and fix, grounded in the sources",
  "fixes": [{"process": "<failed process name>", "settings": {"<directive>": "<value>"},
-            "rationale": "why these values, with the numbers you used", "sources": [<source numbers>]}],
- "infrastructure": [{"title": "...", "detail": "...", "sources": [<numbers>]}]}
+            "evidence": [{"setting": "<directive>", "source": <n>, "quote": "<verbatim text from that source>"}],
+            "rationale": "argument from the quoted sources to these values, with the numbers you used"}],
+ "infrastructure": [{"title": "...", "detail": "...",
+                     "evidence": [{"source": <n>, "quote": "<verbatim text>"}]}]}
 Rules:
 - Only processes listed in failed_tasks. Only these directives: memory, time, cpus, errorStrategy, maxRetries,
   queue, disk. Value formats ONLY:
@@ -173,7 +232,8 @@ Rules:
   Never exceed platform.largest_task_memory_gb when it is given.
 - If you rely on retries, make sure errorStrategy actually retries the observed exit_code; if the existing rule
   doesn't cover it, write an errorStrategy that keeps the existing codes and adds it.
-- Cite sources by number for every fix. Do not invent sources. If config cannot fix it (bad input, missing
+- Every setting needs its own evidence entry (the same quote may support several settings, list each).
+  Do not invent sources. If config cannot fix it (bad input, missing
   reference, IAM, container), return no fix for that process and explain under infrastructure.
 - Infrastructure changes (Terraform, compute environments, IAM, HealthOmics run storage) go ONLY in
   "infrastructure" as advice; never put them in settings."""
@@ -323,51 +383,87 @@ def research(inv: Investigation | None, diagnoses: list[Diagnosis], cfg: RepoCon
                 res.sources.append({"n": len(res.sources) + 1, "title": str(h.get("title", ""))[:160], "url": url,
                                     "snippet": str(h.get("snippet", ""))[:400], "site": site})
 
-        stage("AI: reading the top sources")
-        for s in res.sources[:FETCH_TOP]:
-            if _allowed_host(s["url"]):
+        stage(f"AI: reading {len(res.sources)} sources")
+
+        def read(src: dict) -> None:
+            if _allowed_host(src["url"]):
                 try:
-                    s["text"] = _page_text(http.get_text(s["url"]))
+                    src["text"] = _page_text(http.get_text(src["url"]))
                 except (urllib.error.URLError, OSError, ValueError):
                     pass
+        from concurrent.futures import ThreadPoolExecutor
+        with ThreadPoolExecutor(max_workers=6) as pool:
+            list(pool.map(read, res.sources))
+        for src in res.sources:
+            src["read"] = bool(src.get("text"))
+        readable = [src for src in res.sources if src["read"]]
+        if not readable:
+            res.error = "AI research found sources but could not read any of them, so no fix can be grounded."
+            return res
 
-        stage("AI: proposing the fix")
-        prompt = json.dumps({**ctx, "sources": [{k: s.get(k, "") for k in ("n", "title", "url", "snippet", "text")}
-                                                for s in res.sources]})
+        stage("AI: proposing the fix from what the sources say")
+        prompt = json.dumps({**ctx, "sources": [{"n": src["n"], "title": src["title"], "url": src["url"],
+                                                 "text": excerpt(src["text"])} for src in readable]})
         out = chat(FIX_PROMPT, prompt)
     except (urllib.error.URLError, OSError, KeyError, ValueError, TypeError) as e:
         res.error = redact(f"AI research failed: {e}")
         return res
 
     res.summary = redact(str(out.get("summary", "")))[:1200]
-    valid_n = {s["n"] for s in res.sources}
-    stage("AI: checking the proposal")
+    by_n = {src["n"]: src for src in res.sources}
+    stage("AI: checking every value and every quote against the sources")
+
+    def grounded(items, label: str) -> list[dict]:
+        ok = []
+        for ev in items or []:
+            if not isinstance(ev, dict):
+                continue
+            n = ev.get("source")
+            n = int(n) if isinstance(n, (int, float)) or (isinstance(n, str) and n.isdigit()) else None
+            quote = str(ev.get("quote", "")).strip().strip('"').strip()
+            why = verify_quote(quote, by_n.get(n))
+            if why:
+                res.rejected.append(f"{label}: quote from [{n if n is not None else '?'}] rejected, {why}: "
+                                    f"\"{quote[:90]}{'...' if len(quote) > 90 else ''}\"")
+            else:
+                ok.append({"setting": str(ev.get("setting", "")).strip(), "n": n, "quote": redact(quote)})
+        return ok
+
     for fx in out.get("fixes") or []:
         name = str(fx.get("process", "")).split(":")[-1].strip()
-        cites = [n for n in fx.get("sources") or [] if isinstance(n, int) and n in valid_n]
-        settings = {}
+        evidence = grounded(fx.get("evidence"), name or "?")
+        settings, used = {}, []
         for k, v in (fx.get("settings") or {}).items():
-            why = check(name, str(k), str(v), ctx) if name in names else f"{name or '?'} is not one of the failed processes"
+            k, v = str(k), str(v)
+            why = check(name, k, v, ctx) if name in names else f"{name or '?'} is not one of the failed processes"
+            mine = [e for e in evidence if e["setting"] == k]
+            if not why and not mine:
+                why = "no verified quote from a source supports it (strict grounding rule)"
             if why:
-                res.rejected.append(f"{name}.{k} = {str(v)[:80]}: {why}")
+                res.rejected.append(f"{name}.{k} = {v[:80]}: {why}")
             else:
-                settings[str(k)] = str(v).strip()
-        if settings and not cites:
-            res.rejected.append(f"{name}: no valid source cited, so the proposal was not used")
+                settings[k] = v.strip()
+                used += mine
+        if not settings:
             continue
-        if settings:
-            why = redact(str(fx.get("rationale", "")))[:600]
-            prev = next((p for p in res.fixes if p.name == name), None)
-            if prev:  # the model sometimes splits one process over several entries: merge them
-                prev.settings.update(settings)
-                prev.rationale = (prev.rationale + " " + why).strip()
-                prev.sources += [n for n in cites if n not in prev.sources]
-            else:
-                res.fixes.append(AIFix(name, settings, why, cites))
+        why = redact(str(fx.get("rationale", "")))[:900]
+        cites = sorted({e["n"] for e in used})
+        prev = next((p for p in res.fixes if p.name == name), None)
+        if prev:  # the model sometimes splits one process over several entries: merge them
+            prev.settings.update(settings)
+            prev.rationale = (prev.rationale + " " + why).strip()
+            prev.sources = sorted(set(prev.sources) | set(cites))
+            prev.evidence += used
+        else:
+            res.fixes.append(AIFix(name, settings, why, cites, used))
     for it in out.get("infrastructure") or []:
-        res.infrastructure.append({"title": redact(str(it.get("title", "")))[:160],
-                                   "detail": redact(str(it.get("detail", "")))[:800],
-                                   "sources": [n for n in it.get("sources") or [] if isinstance(n, int) and n in valid_n]})
-    for s in res.sources:
-        s.pop("text", None)
+        title = redact(str(it.get("title", "")))[:160]
+        ev = grounded(it.get("evidence"), f"advice '{title[:40]}'")
+        if not ev:
+            res.rejected.append(f"advice '{title[:60]}': no verified quote from a source, so it was not included")
+            continue
+        res.infrastructure.append({"title": title, "detail": redact(str(it.get("detail", "")))[:800],
+                                   "sources": sorted({e["n"] for e in ev}), "evidence": ev})
+    for src in res.sources:
+        src.pop("text", None)
     return res

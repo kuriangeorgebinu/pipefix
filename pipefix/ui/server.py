@@ -126,9 +126,9 @@ def _ai_json(patch: Patch) -> dict | None:
         return None
     return {"model": ai.model, "error": ai.error, "summary": ai.summary, "used": patch.ai_used,
             "queries": [redact(q) for q in ai.queries], "rejected": ai.rejected,
-            "sources": [{k: s[k] for k in ("n", "title", "url", "snippet", "site")} for s in ai.sources],
-            "fixes": [{"name": f.name, "settings": f.settings, "rationale": f.rationale, "sources": f.sources}
-                      for f in ai.fixes],
+            "sources": [{k: s.get(k) for k in ("n", "title", "url", "snippet", "site", "read")} for s in ai.sources],
+            "fixes": [{"name": f.name, "settings": f.settings, "rationale": f.rationale, "sources": f.sources,
+                       "evidence": f.evidence} for f in ai.fixes],
             "infrastructure": ai.infrastructure}
 
 

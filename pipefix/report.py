@@ -52,24 +52,30 @@ def _ai_section(patch: Patch) -> list[str]:
     if ai.error:
         return lines + [f"Not used: {_md(ai.error)}", ""]
     used = ", ".join(f"`{n}`" for n in patch.ai_used) or "none"
-    lines += [f"pipefix searched AWS, Nextflow/nf-core and Terraform sources and asked `{_md(ai.model)}` to propose "
-              f"the fix. Every value was checked by pipefix before it was written (accepted forms only, failed "
-              f"processes only, within the platform's limits). AI-proposed fix used for: {used}. "
+    read = sum(1 for s in ai.sources if s.get("read"))
+    lines += [f"pipefix searched AWS, Nextflow/nf-core and Terraform sources, read {read} of the "
+              f"{len(ai.sources)} pages, and asked `{_md(ai.model)}` to propose the fix from them. Strict rule: "
+              "every value must be backed by a verbatim quote from a page pipefix read, and pipefix verified each "
+              "quote against that page before writing anything (plus: accepted forms only, failed processes "
+              f"only, within the platform's limits). AI-proposed fix used for: {used}. "
               "**Review these values before merging.**", ""]
     if ai.summary:
         lines += [f"> {_md(ai.summary)}", ""]
     for fx in ai.fixes:
         lines.append(f"- **{_md(fx.name)}**: " + "; ".join(f"`{k} = {_md(v)}`" for k, v in fx.settings.items())
-                     + (f". {_md(fx.rationale)}" if fx.rationale else "")
-                     + (" " + " ".join(f"[{n}]" for n in fx.sources) if fx.sources else ""))
+                     + (f". {_md(fx.rationale)}" if fx.rationale else ""))
+        for e in fx.evidence:
+            lines.append(f"  - `{_md(e['setting'])}`: source [{e['n']}] says: \"{_md(e['quote'])}\"")
     if ai.infrastructure:
         lines += ["", "**Infrastructure advice (not applied)**", ""]
-        lines += [f"- {_md(it['title'])}: {_md(it['detail'])}" + (" " + " ".join(f"[{n}]" for n in it["sources"])
-                                                                 if it["sources"] else "") for it in ai.infrastructure]
+        for it in ai.infrastructure:
+            lines.append(f"- {_md(it['title'])}: {_md(it['detail'])}")
+            lines += [f"  - source [{e['n']}] says: \"{_md(e['quote'])}\"" for e in it.get("evidence", [])]
     if ai.rejected:
         lines += ["", "**Rejected by pipefix's checks (not written)**", ""] + [f"- {_md(r)}" for r in ai.rejected]
     if ai.sources:
         lines += ["", "**Sources**", ""] + [f"{s['n']}. [{_md(s['title']) or s['url']}]({s['url']})"
+                                             + ("" if s.get("read") else " (could not be read, so not citable)")
                                              for s in ai.sources]
     return lines + [""]
 

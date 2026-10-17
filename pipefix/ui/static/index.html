@@ -373,6 +373,11 @@ dialog .scopes { font-size: 13.5px; margin: 8px 0 0; padding-left: 18px; }
 .aibox ul.plain { margin: 8px 0 0; padding-left: 18px; font-size: 13.5px; color: var(--ink-2); }
 .aibox ul.plain li + li { margin-top: 4px; }
 .rej { color: var(--T); }
+.quote { margin: 6px 0 0; padding: 8px 12px; border-left: 3px solid var(--C); background: var(--C-wash); border-radius: 0 8px 8px 0;
+  font-size: 13.5px; color: var(--ink); }
+.quote .for { display: block; font-size: 11.5px; color: var(--ink-3); font-family: var(--mono); margin-bottom: 3px; }
+.quotes { display: flex; flex-direction: column; gap: 6px; margin-top: 6px; }
+.unread { font-size: 11px; color: var(--ink-3); margin-left: 6px; }
 
 /* ---------- responsive ---------- */
 @media (max-width: 1080px) {
@@ -1016,16 +1021,19 @@ function changeBlock(r, job) {
 }
 
 function host(u) { try { return new URL(u).host; } catch { return ""; } }
-function citeList(sources, used) {
+function quotesHTML(ev) {
+  return ev.length ? `<div class="quotes">${ev.map(e => `<blockquote class="quote"><span class="for">${e.setting ? esc(e.setting) + " · " : ""}source [${e.n}] says</span>“${esc(e.quote)}”</blockquote>`).join("")}</div>` : "";
+}
+function citeList(sources, used, evidence = []) {
   return `<ol class="cites">${sources.map(s => `<li class="${used.has(s.n) ? "cited" : ""}"><span class="n" aria-label="source ${s.n}">${s.n}</span><div>
-    <a href="${esc(s.url)}" target="_blank" rel="noopener noreferrer">${esc(s.title || s.url)}</a><span class="site ${esc(s.site)}">${esc(s.site)}</span>
-    <div class="host">${esc(host(s.url))}</div>${s.snippet ? `<p>${esc(s.snippet)}</p>` : ""}</div></li>`).join("")}</ol>`;
+    <a href="${esc(s.url)}" target="_blank" rel="noopener noreferrer">${esc(s.title || s.url)}</a><span class="site ${esc(s.site)}">${esc(s.site)}</span>${s.read === false ? '<span class="unread">not readable, not citable</span>' : ""}
+    <div class="host">${esc(host(s.url))}</div>${quotesHTML(evidence.filter(e => e.n === s.n)) || (s.snippet ? `<p>${esc(s.snippet)}</p>` : "")}</div></li>`).join("")}</ol>`;
 }
 function citesFor(name) {
   const ai = JOB?.result?.ai, fx = ai?.fixes.find(x => x.name === name);
   if (!fx || !fx.sources.length) return "";
   const used = new Set(fx.sources);
-  return `<h4 style="font-size:13px;margin:14px 0 0;color:var(--ink-2)">Sources used for this fix</h4>${citeList(ai.sources.filter(s => used.has(s.n)), used)}`;
+  return `<h4 style="font-size:13px;margin:14px 0 0;color:var(--ink-2)">What the sources say (quotes verified against each page)</h4>${citeList(ai.sources.filter(s => used.has(s.n)), used, fx.evidence || [])}`;
 }
 function aiBlock(r) {
   const ai = r.ai;
@@ -1033,14 +1041,14 @@ function aiBlock(r) {
   if (ai.error) return `<section class="section"><div class="aibox"><h3>AI research <span class="badge">not used</span></h3><p class="note">${esc(ai.error)} The fix above is pipefix's rule-based one.</p></div></section>`;
   const used = new Set(ai.fixes.flatMap(f => f.sources).concat(ai.infrastructure.flatMap(i => i.sources)));
   return `<section class="section" aria-labelledby="ai-sec-h"><h2 id="ai-sec-h">How the AI researched this fix</h2>
-    <p class="lede">pipefix searched AWS, Nextflow and Terraform docs, asked <code>${esc(ai.model)}</code> to propose the fix from them, and checked every value before writing it. Highlighted sources were cited.</p>
+    <p class="lede">pipefix searched AWS, Nextflow and Terraform docs, read ${ai.sources.filter(s => s.read).length} of ${ai.sources.length} pages, and asked <code>${esc(ai.model)}</code> to propose the fix from them. Strict rule: every value needs a verbatim quote from a page pipefix read, and each quote was checked against that page. Highlighted sources were quoted.</p>
     <div class="aibox">
       <h3>Proposed fix <span class="badge">AI-researched</span></h3>
       ${ai.summary ? `<blockquote>${esc(ai.summary)}</blockquote>` : ""}
-      ${ai.fixes.length ? `<ul class="plain">${ai.fixes.map(f => `<li><b>${esc(f.name)}</b>: ${Object.entries(f.settings).map(([k, v]) => `<code>${esc(k)} = ${esc(v)}</code>`).join(", ")}${f.rationale ? `. ${esc(f.rationale)}` : ""} ${f.sources.map(n => `<a href="#src-${n}">[${n}]</a>`).join(" ")}</li>`).join("")}</ul>` : `<p class="note">The AI proposed no config change that passed pipefix's checks.</p>`}
-      ${ai.infrastructure.length ? `<h4>Infrastructure advice (not applied)</h4><ul class="plain">${ai.infrastructure.map(i => `<li><b>${esc(i.title)}</b>: ${esc(i.detail)} ${i.sources.map(n => `<a href="#src-${n}">[${n}]</a>`).join(" ")}</li>`).join("")}</ul>` : ""}
+      ${ai.fixes.length ? `<ul class="plain">${ai.fixes.map(f => `<li><b>${esc(f.name)}</b>: ${Object.entries(f.settings).map(([k, v]) => `<code>${esc(k)} = ${esc(v)}</code>`).join(", ")}${f.rationale ? `. ${esc(f.rationale)}` : ""}${quotesHTML(f.evidence || [])}</li>`).join("")}</ul>` : `<p class="note">The AI proposed no config change that passed pipefix's checks.</p>`}
+      ${ai.infrastructure.length ? `<h4>Infrastructure advice (not applied)</h4><ul class="plain">${ai.infrastructure.map(i => `<li><b>${esc(i.title)}</b>: ${esc(i.detail)}${quotesHTML(i.evidence || [])}</li>`).join("")}</ul>` : ""}
       ${ai.rejected.length ? `<h4>Rejected by pipefix's checks</h4><ul class="plain">${ai.rejected.map(x => `<li class="rej">${esc(x)}</li>`).join("")}</ul>` : ""}
-      <h4>Sources</h4>${citeList(ai.sources, used).replace(/<li class/g, (m, i) => m).replace(/<span class="n" aria-label="source (\d+)">/g, '<span class="n" id="src-$1" aria-label="source $1">')}
+      <h4>Sources</h4>${citeList(ai.sources, used, ai.fixes.flatMap(f => f.evidence || []).concat(ai.infrastructure.flatMap(i => i.evidence || []))).replace(/<li class/g, (m, i) => m).replace(/<span class="n" aria-label="source (\d+)">/g, '<span class="n" id="src-$1" aria-label="source $1">')}
       <details class="audit" style="margin-top:16px"><summary>Searches it ran (${ai.queries.length})</summary><div class="calls">${ai.queries.map(q => `<code>${esc(q)}</code>`).join("")}</div></details>
     </div></section>`;
 }
