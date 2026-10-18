@@ -112,7 +112,8 @@ def _agent(a: argparse.Namespace) -> int:
     agent = Agent(clients, repo, goal, allow_mr=a.open_pr and bool(repo),
                   on_step=lambda st: print(f"{PHASE_TITLE[st.phase]:28} #{st.n:<3} {'' if st.ok else '[refused] '}"
                                            f"{st.summary}"),
-                  mr_opener=(lambda res: open_mr(repo, res, draft=not a.ready)) if repo else None)
+                  mr_opener=(lambda res: open_mr(repo, res, draft=not a.ready)) if repo else None,
+                  transcript=a.transcript)
     res = agent.run()
     if res.error:
         print(f"\n[stopped] {res.error}", file=sys.stderr)
@@ -185,6 +186,7 @@ def main(argv: list[str] | None = None) -> int:
     s.add_argument("--ready", action="store_true", help="open it ready for review instead of as a draft")
     s.add_argument("--report", help="save the full report (markdown)")
     s.add_argument("--env-file", action="append", help="read the AI keys from this .env file")
+    s.add_argument("--transcript", help="save the agent's full (redacted) conversation as JSON")
 
     s = sub.add_parser("ui", help="open the pipefix console in your browser")
     s.add_argument("--port", type=int, default=8787)

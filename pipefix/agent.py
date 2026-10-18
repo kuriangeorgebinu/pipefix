@@ -296,13 +296,15 @@ def _short(obj, limit: int = OUT_CHARS) -> str:
 
 class Agent:
     def __init__(self, clients: Clients | None, repo: str | Path | None, goal: dict, http: Http | None = None,
-                 allow_mr: bool = False, on_step=None, mr_opener=None, max_seconds: int = 900):
+                 allow_mr: bool = False, on_step=None, mr_opener=None, max_seconds: int = 900,
+                 transcript: str | Path | None = None):
         self.clients, self.goal, self.http = clients, goal, http or Http()
         self.repo = Path(repo).resolve() if repo else None
         self.cfg: RepoConfig | None = load_repo(self.repo) if self.repo and (self.repo / "nextflow.config").is_file() \
             else None
         self.allow_mr, self.on_step, self.mr_opener = allow_mr, on_step or (lambda s: None), mr_opener
         self.deadline = time.time() + max_seconds
+        self.transcript = Path(transcript) if transcript else None
         key, self.base, self.model = keys.llm_endpoint()
         self.llm_key = key
         self.serper_key, _ = keys.get("serper")
@@ -744,6 +746,8 @@ class Agent:
         except Exception as e:  # noqa: BLE001 - reported in the result
             self.res.error = redact(f"Agent stopped in {PHASE_TITLE.get(self.res.phase_reached, '?')}: {e}")
         self.inv.calls[:] = self.clients.calls if self.clients else []
+        if self.transcript:  # the full conversation (already redacted), for debugging the agent
+            self.transcript.write_text(json.dumps(messages, indent=1, default=str), encoding="utf-8")
         return self.res
 
 
