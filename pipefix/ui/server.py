@@ -170,6 +170,8 @@ def _run_investigation(job: dict, req: dict) -> None:
             kwargs = {"batch_queue": value} if mode == "batch-queue" else \
                 {"batch_jobs": value.replace(",", " ").split()} if mode == "batch-jobs" else {"omics_run": value}
             kwargs["since_hours"] = float(req.get("since") or 24)
+            if req.get("fix_mode") == "agent":
+                return _run_agent(job, req, clients, repo, kwargs)
         inv, diags = investigate(clients, on_stage=lambda n: _stage(job, n), **kwargs)
         cfg = None
         if (repo / "nextflow.config").is_file():
@@ -195,6 +197,42 @@ def _run_investigation(job: dict, req: dict) -> None:
                 s["state"] = "failed"
         job["status"], job["error"] = "failed", redact(f"{e}")
         traceback.print_exc()
+
+
+def _run_agent(job: dict, req: dict, clients, repo: Path, goal: dict) -> None:
+    """The agentic mode: the AI makes the AWS calls, researches, decides, implements and opens the MR."""
+    from ..agent import PHASE_TITLE, Agent, open_mr, to_json
+    goal = {k: v for k, v in goal.items() if k != "since_hours"}
+    has_repo = (repo / "nextflow.config").is_file()
+    token = any(vcs.token_status(p)["set"] for p in vcs.PROVIDERS)
+    allow_mr = bool(req.get("agent_mr")) and token and has_repo
+
+    def step(st):
+        for s in job["stages"]:
+            if s["state"] == "running":
+                s["state"] = "done"
+        job["stages"].append({"name": f"{PHASE_TITLE[st.phase]} · #{st.n} {st.summary}",
+                              "state": "done" if st.ok else "failed"})
+    agent = Agent(clients, repo if has_repo else None, goal, allow_mr=allow_mr, on_step=step,
+                  mr_opener=lambda res: open_mr(repo, res, draft=not req.get("ready")))
+    _stage(job, "Agent starting: 1. Debug, 2. Research, 3. Pick, 4. Implement, 5. Merge request")
+    res = agent.run()
+    patch = res.patch
+    if patch is not None:
+        patch.agent = res
+    else:
+        patch = Patch({}, [], res.diagnoses, {})
+    cfg = load_repo(repo) if has_repo else None
+    job["patch"], job["repo"] = (res.patch, repo) if res.patch is not None else (None, repo)
+    job["result"] = serialize(res.inv, res.diagnoses, patch, repo, cfg)
+    job["result"]["agent"] = to_json(res)
+    if res.mr_url:
+        job["mr"] = {"url": res.mr_url, "existing": False}
+        job["written"] = list(patch.files)
+    for s in job["stages"]:
+        if s["state"] == "running":
+            s["state"] = "done"
+    job["status"] = "done"
 
 
 def _apply(job: dict) -> dict:

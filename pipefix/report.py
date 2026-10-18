@@ -41,7 +41,50 @@ def summary(diagnoses: list[Diagnosis]) -> str:
 def pr_title(patch: Patch) -> str:
     names = sorted({f.name for f in patch.fixes})
     head = ", ".join(names[:3]) + (f" +{len(names) - 3}" if len(names) > 3 else "")
-    return f"pipefix{' (AI-researched)' if patch.ai_used else ''}: fix failed pipeline tasks ({head})"
+    kind = " agent" if getattr(patch, "agent", None) else " (AI-researched)" if patch.ai_used else ""
+    return f"pipefix{kind}: fix failed pipeline tasks ({head})"
+
+
+def _agent_section(patch: Patch) -> list[str]:
+    res = getattr(patch, "agent", None)
+    if not res:
+        return []
+    from .agent import COMMANDS, PHASE_TITLE, PHASES
+    aws = [s for s in res.steps if s.ok and COMMANDS.get(s.tool, {}).get("aws")]
+    lines = ["## How the agent worked", "",
+             f"The pipefix agent (`{_md(res.model)}`) ran the five required steps itself: it chose and made "
+             f"{len(aws)} read-only AWS calls, read the pipeline repo, researched the docs, compared candidate "
+             "solutions, implemented the chosen one and opened this MR. pipefix enforced the order, the allowed "
+             "commands of each step, the evidence checks and the config checks"
+             + (f" (it refused {res.refused} call(s) that broke a rule)" if res.refused else "") + ".", ""]
+    d = res.diagnosis
+    if d:
+        lines += [f"**1. Debug.** {_md(d.get('root_cause', ''))}", ""]
+        lines += [f"- call #{e['call']} `{e['tool']}`: \"{_md(e['excerpt'][:300])}\"" for e in d.get("evidence", [])]
+        lines.append("")
+    if res.candidates:
+        lines += ["**2. Research: candidate solutions**", "", "| | Candidate | Settings | Checks |", "|---|---|---|---|"]
+        for c in res.candidates:
+            mark = "**chosen**" if c["id"] == res.decision.get("chosen") else c["id"]
+            sets = "; ".join(f"`{k} = {_md(v)}`" for k, v in c["settings"].items()) or "no config change"
+            lines.append(f"| {mark} | {_md(c['title'])} | {sets} | "
+                         f"{'passed' if c['valid'] else _md('failed: ' + '; '.join(c['problems'])[:200])} |")
+        lines.append("")
+    if res.decision:
+        lines += [f"**3. Decision.** {_md(res.decision['reasons'])}", ""]
+        lines += [f"- Not {_md(k)}: {_md(v)}" for k, v in res.decision.get("why_not", {}).items()]
+        if res.decision.get("risks"):
+            lines.append(f"- Risks: {_md(res.decision['risks'])}")
+        lines.append("")
+    if res.implement_summary:
+        lines += [f"**4. Implementation.** {_md(res.implement_summary)}", ""]
+    lines += ["<details><summary>Every step the agent took</summary>", ""]
+    for p in PHASES:
+        steps = [s for s in res.steps if s.phase == p]
+        if steps:
+            lines.append(f"*{PHASE_TITLE[p]}*")
+            lines += [f"- #{s.n} {'' if s.ok else '(refused) '}{_md(s.summary)}" for s in steps]
+    return lines + ["", "</details>", ""]
 
 
 def _ai_section(patch: Patch) -> list[str]:
@@ -145,6 +188,7 @@ def body(diagnoses: list[Diagnosis], patch: Patch, inv: Investigation | None = N
         for fx in patch.fixes:
             lines.append(f"- **{fx.name}**: " + "; ".join(_md(n) for n in fx.notes))
         lines.append("")
+    lines += _agent_section(patch)
     lines += _ai_section(patch)
     if patch.advisories:
         lines += ["## Needs a person", "", "Not safely fixable by pipeline config, so nothing was changed for these:", ""]

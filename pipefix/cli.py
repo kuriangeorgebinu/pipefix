@@ -99,6 +99,34 @@ def _deliver(a: argparse.Namespace, diagnoses: list[Diagnosis], inv: Investigati
     return 0
 
 
+def _agent(a: argparse.Namespace) -> int:
+    from .agent import PHASE_TITLE, Agent, open_mr
+    from .aws.session import AwsUnavailable, boto3_clients
+    try:
+        clients = boto3_clients(a.profile, a.region)
+    except AwsUnavailable as e:
+        print(f"pipefix: {e}", file=sys.stderr)
+        return 2
+    goal = {"omics_run": a.omics_run, "batch_jobs": a.batch_job, "batch_queue": a.batch_queue}
+    repo = Path(a.repo).resolve() if a.repo else None
+    agent = Agent(clients, repo, goal, allow_mr=a.open_pr and bool(repo),
+                  on_step=lambda st: print(f"{PHASE_TITLE[st.phase]:28} #{st.n:<3} {'' if st.ok else '[refused] '}"
+                                           f"{st.summary}"),
+                  mr_opener=(lambda res: open_mr(repo, res, draft=not a.ready)) if repo else None)
+    res = agent.run()
+    if res.error:
+        print(f"\n[stopped] {res.error}", file=sys.stderr)
+    if res.patch is not None:
+        res.patch.agent = res
+        print("\n" + res.patch.diff())
+        if a.report:
+            Path(a.report).write_text(body(res.diagnoses, res.patch, res.inv), encoding="utf-8")
+            print(f"Report written to {a.report}")
+    if res.mr_url:
+        print(f"Opened: {res.mr_url}")
+    return 0 if res.done else 1
+
+
 def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(prog="pipefix", description="Diagnose failed Nextflow runs and open the fix.")
     p.add_argument("--version", action="version", version=f"pipefix {__version__}")
@@ -144,6 +172,20 @@ def main(argv: list[str] | None = None) -> int:
     outputs(s, True)
     s._option_string_actions["--repo"].required = False
 
+    s = sub.add_parser("agent", help="let the AI agent debug the run on AWS, research, decide, implement and open "
+                                     "the MR (five enforced steps)")
+    g = s.add_mutually_exclusive_group(required=True)
+    g.add_argument("--omics-run", help="AWS HealthOmics run id")
+    g.add_argument("--batch-job", nargs="+", help="AWS Batch job id(s)")
+    g.add_argument("--batch-queue", help="AWS Batch queue with failed jobs")
+    s.add_argument("--repo", help="the pipeline's git repo (folder with nextflow.config)")
+    s.add_argument("--profile")
+    s.add_argument("--region")
+    s.add_argument("--open-pr", action="store_true", help="let the agent open the (draft) PR/MR in step 5")
+    s.add_argument("--ready", action="store_true", help="open it ready for review instead of as a draft")
+    s.add_argument("--report", help="save the full report (markdown)")
+    s.add_argument("--env-file", action="append", help="read the AI keys from this .env file")
+
     s = sub.add_parser("ui", help="open the pipefix console in your browser")
     s.add_argument("--port", type=int, default=8787)
     s.add_argument("--no-browser", action="store_true")
@@ -165,6 +207,8 @@ def main(argv: list[str] | None = None) -> int:
         serve(a.port, not a.no_browser)
         return 0
     inv = None
+    if a.cmd == "agent":
+        return _agent(a)
     if a.cmd == "investigate":
         from .aws.session import AwsUnavailable, boto3_clients
         from .investigate import investigate

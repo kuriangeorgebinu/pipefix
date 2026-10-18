@@ -350,6 +350,7 @@ dialog .err { color: var(--T); font-size: 13.5px; margin: 12px 0 0; }
 dialog .scopes { font-size: 13.5px; margin: 8px 0 0; padding-left: 18px; }
 
 /* ---------- AI research ---------- */
+.seg3 { grid-template-columns: repeat(3, 1fr); }
 .check { display: grid; grid-template-columns: 18px 1fr; gap: 4px 10px; margin-top: 16px; font-size: 13.5px; align-items: start; }
 .check input { margin: 3px 0 0; width: 16px; height: 16px; accent-color: var(--C); }
 .check small { grid-column: 2; color: var(--ink-3); font-size: 12px; }
@@ -378,6 +379,23 @@ dialog .scopes { font-size: 13.5px; margin: 8px 0 0; padding-left: 18px; }
 .quote .for { display: block; font-size: 11.5px; color: var(--ink-3); font-family: var(--mono); margin-bottom: 3px; }
 .quotes { display: flex; flex-direction: column; gap: 6px; margin-top: 6px; }
 .unread { font-size: 11px; color: var(--ink-3); margin-left: 6px; }
+
+/* ---------- agent ---------- */
+.agent-steps { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 8px; margin-top: 18px; }
+.agent-steps .ph { border: 1px solid var(--rule); border-radius: 10px; padding: 10px 12px; background: var(--surface); font-size: 13px; }
+.agent-steps .ph b { display: block; font-weight: 600; }
+.agent-steps .ph small { color: var(--ink-3); }
+.agent-steps .ph.ok { border-color: color-mix(in srgb, var(--A) 55%, var(--rule)); box-shadow: inset 0 3px 0 var(--A); }
+.agent-steps .ph.stop { border-color: var(--T); box-shadow: inset 0 3px 0 var(--T); }
+.cands { width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 13.5px; }
+.cands th { text-align: left; font-weight: 500; color: var(--ink-3); font-size: 12.5px; padding: 6px 10px 6px 0; border-bottom: 1px solid var(--rule); }
+.cands td { padding: 10px 10px 10px 0; border-bottom: 1px solid var(--rule); vertical-align: top; overflow-wrap: anywhere; }
+.cands tr.chosen td { background: var(--A-wash); }
+.steplog { list-style: none; margin: 8px 0 0; padding: 0; font-size: 13px; font-family: var(--mono); }
+.steplog li { padding: 3px 0; color: var(--ink-2); overflow-wrap: anywhere; }
+.steplog li.aws::before { content: "AWS "; color: var(--G); font-weight: 600; }
+.steplog li.no { color: var(--T); }
+@media (max-width: 860px) { .agent-steps { grid-template-columns: 1fr 1fr; } }
 
 /* ---------- responsive ---------- */
 @media (max-width: 1080px) {
@@ -445,8 +463,18 @@ dialog .scopes { font-size: 13.5px; margin: 8px 0 0; padding-left: 18px; }
           <div class="field"><label for="region">Region</label><input id="region" class="code" placeholder="from your AWS config"></div>
           <div class="field"><label for="nfp">Nextflow profiles the run used</label><input id="nfp" class="code" placeholder="awsbatch"></div>
         </details>
-        <label class="check" id="f-ai"><input type="checkbox" id="ai"><span>Research the fix with AI</span>
-          <small>Searches AWS, Nextflow and Terraform docs and lets an LLM propose the fix, with sources. pipefix checks every value. Sends error lines and config, never data.</small></label>
+        <div class="field" id="f-fixmode">
+          <label id="fixmode-label">How to fix</label>
+          <div class="seg seg3" role="radiogroup" aria-labelledby="fixmode-label" id="fixmode">
+            <button type="button" role="radio" data-fm="rules" aria-checked="true">Rules</button>
+            <button type="button" role="radio" data-fm="ai" aria-checked="false">AI research</button>
+            <button type="button" role="radio" data-fm="agent" aria-checked="false">AI agent</button>
+          </div>
+          <small id="fixmode-hint"></small>
+        </div>
+        <label class="check" id="f-agent-mr" hidden><input type="checkbox" id="agent-mr" checked><span>Let the agent open the merge request</span>
+          <small>Step 5 opens a draft MR on the repo's origin. Needs a GitHub or GitLab token.</small></label>
+        <input type="checkbox" id="ai" hidden>
         <p class="note" id="demo-note" hidden>Runs against a built-in example account with four failed tasks and an nf-core style pipeline. Nothing touches AWS or your files.</p>
         <button class="btn primary run-btn" id="run" type="submit">Investigate</button>
         <p class="note">Read-only in AWS. pipefix only changes your repo when you choose Write changes or Open merge request.</p>
@@ -577,8 +605,7 @@ async function loadStatus() {
   try {
     STATUS = await api("/api/status");
     $("#ver").textContent = "v" + STATUS.version;
-    renderTokens(); renderKeys();
-    if (store.get("pipefix-ai") === "1" && aiReady()) $("#ai").checked = true;
+    renderTokens(); renderKeys(); setFixMode(FIXMODE);
     const c = $("#conn"), a = STATUS.aws || {};
     if (a.state === "checking") { setTimeout(loadStatus, 1500); return; }
     c.classList.toggle("ok", a.state === "ok");
@@ -674,10 +701,7 @@ function renderKeys() {
       : `<button class="linkbtn${s.set ? " quiet" : ""}" type="button" data-key="${kind}">${s.set ? "Replace" : "Add key"}</button>`;
     return `<li class="${s.set ? "on" : ""}"><i aria-hidden="true"></i><b>${d.name}</b>${act}<small>${sub}</small></li>`;
   }).join("");
-  const box = $("#ai");
-  box.disabled = !aiReady();
-  if (!aiReady()) box.checked = false;
-  $("#f-ai").title = aiReady() ? "" : "Add a Serper key and an LLM key first";
+  for (const b of document.querySelectorAll("#fixmode button")) if (b.dataset.fm !== "rules") b.disabled = !aiReady();
 }
 let KEY_KIND = "serper";
 function openKey(kind) {
@@ -713,8 +737,21 @@ $("#key-save").addEventListener("click", async () => {
   } catch (x) { err.textContent = x.message; err.hidden = false; }
   finally { btn.disabled = false; btn.textContent = "Check and save"; }
 });
-(function () { const v = store.get("pipefix-ai"); if (v === "1") $("#ai").checked = true;
-  $("#ai").addEventListener("change", e => store.set("pipefix-ai", e.target.checked ? "1" : "0")); })();
+let FIXMODE = store.get("pipefix-fixmode") || "rules";
+const FM_HINT = {
+  rules: "pipefix's own rules diagnose and fix. Nothing is sent to an AI.",
+  ai: "pipefix investigates; an LLM researches AWS, Nextflow and Terraform docs and proposes the fix, with verified quotes.",
+  agent: "The AI agent runs everything itself in 5 enforced steps: debug on AWS (read-only), research, pick the best solution, implement, merge request.",
+};
+function setFixMode(m) {
+  if (m !== "rules" && !aiReady()) m = "rules";
+  FIXMODE = m; store.set("pipefix-fixmode", m);
+  for (const b of document.querySelectorAll("#fixmode button")) b.setAttribute("aria-checked", String(b.dataset.fm === m));
+  $("#fixmode-hint").textContent = FM_HINT[m] + (m !== "rules" ? "" : aiReady() ? "" : " Add the AI keys below to use AI.");
+  $("#f-agent-mr").hidden = m !== "agent";
+  $("#ai").checked = m === "ai";
+}
+$("#fixmode").addEventListener("click", e => { const b = e.target.closest("button"); if (b) setFixMode(b.dataset.fm); });
 
 /* ---------- form ---------- */
 const MODES = {
@@ -750,7 +787,8 @@ $("#form").addEventListener("submit", async e => {
   e.preventDefault();
   const req = { mode: MODE, value: $("#value").value, since: $("#since").value, repo: $("#repo").value,
                 profile: $("#profile").value, region: $("#region").value,
-                nf_profiles: $("#nfp").value.split(/[\s,]+/).filter(Boolean), ai: $("#ai").checked };
+                nf_profiles: $("#nfp").value.split(/[\s,]+/).filter(Boolean), ai: FIXMODE === "ai",
+                fix_mode: FIXMODE, agent_mr: FIXMODE === "agent" && $("#agent-mr").checked };
   if (MODE !== "demo" && !req.value.trim()) { $("#value").focus(); $("#value").setCustomValidity("Enter a value first."); $("#value").reportValidity(); return; }
   $("#value").setCustomValidity("");
   $("#run").disabled = true;
@@ -839,6 +877,7 @@ function render(job) {
     </header>
     ${n ? `<section class="lanes fresh" id="lanes" aria-label="Failed tasks">${r.failures.map(lane).join("")}</section>` : ""}
     ${n ? `<section class="section" id="detail" aria-live="polite"></section>` : ""}
+    ${agentBlock(r)}
     <section class="section" aria-labelledby="chg-h">
       <h2 id="chg-h">Proposed change</h2>
       ${changeBlock(r, job)}
@@ -1035,6 +1074,36 @@ function citesFor(name) {
   const used = new Set(fx.sources);
   return `<h4 style="font-size:13px;margin:14px 0 0;color:var(--ink-2)">What the sources say (quotes verified against each page)</h4>${citeList(ai.sources.filter(s => used.has(s.n)), used, fx.evidence || [])}`;
 }
+function agentBlock(r) {
+  const a = r.agent;
+  if (!a) return "";
+  const reached = a.phases.findIndex(p => p.id === a.phase_reached);
+  const phases = a.phases.map((p, i) => {
+    const cls = a.error && i === reached ? "stop" : (i < reached || (!a.error && i <= reached)) ? "ok" : "";
+    return `<div class="ph ${cls}"><b>${esc(p.title)}</b><small>${p.steps.length} step${p.steps.length === 1 ? "" : "s"}${p.steps.some(s => !s.ok) ? `, ${p.steps.filter(s => !s.ok).length} refused` : ""}</small></div>`;
+  }).join("");
+  const d = a.diagnosis || {};
+  const chosen = a.decision?.chosen;
+  return `<section class="section" aria-labelledby="agent-h"><h2 id="agent-h">What the agent did <span class="badge">AI agent</span></h2>
+    <p class="lede"><code>${esc(a.model)}</code> ran the five required steps itself: it chose and made ${a.aws_calls} read-only AWS calls, read the repo, researched the docs, compared solutions, implemented the best one${a.mr_url ? " and opened the merge request" : ""}. pipefix enforced the order, each step's allowed commands and every evidence check${a.refused ? `, and refused ${a.refused} call(s) that broke a rule` : ""}.</p>
+    ${a.error ? `<div class="result-msg err" style="margin-top:14px">${esc(a.error)}</div>` : ""}
+    <div class="agent-steps">${phases}</div>
+    <div class="aibox">
+      ${d.root_cause ? `<h3>1. Debug</h3><blockquote>${esc(d.root_cause)}</blockquote><div class="quotes">${(d.evidence || []).map(e => `<blockquote class="quote"><span class="for">call #${e.call} · ${esc(e.tool)}</span>${esc(e.excerpt)}</blockquote>`).join("")}</div>` : ""}
+      ${a.candidates.length ? `<h4>2. Research: candidate solutions</h4><div style="overflow-x:auto"><table class="cands"><thead><tr><th></th><th>Candidate</th><th>Settings</th><th>Pros / cons</th><th>Checks</th></tr></thead><tbody>
+        ${a.candidates.map(c => `<tr class="${c.id === chosen ? "chosen" : ""}"><td><b>${esc(c.id)}</b>${c.id === chosen ? ' <span class="badge">chosen</span>' : ""}</td><td>${esc(c.title)}</td>
+          <td>${Object.entries(c.settings).map(([k, v]) => `<code>${esc(k)} = ${esc(v)}</code>`).join("<br>") || "no config change"}</td>
+          <td>${esc(c.pros)}${c.cons ? `<br><span style="color:var(--ink-3)">${esc(c.cons)}</span>` : ""}</td>
+          <td>${c.valid ? "passed" : `<span class="rej">${esc(c.problems.join("; "))}</span>`}</td></tr>`).join("")}</tbody></table></div>` : ""}
+      ${a.decision?.chosen ? `<h4>3. Decision</h4><p style="margin:6px 0 0;font-size:14px">${esc(a.decision.reasons)}</p><ul class="plain">${Object.entries(a.decision.why_not || {}).map(([k, v]) => `<li>Not ${esc(k)}: ${esc(v)}</li>`).join("")}${a.decision.risks ? `<li>Risks: ${esc(a.decision.risks)}</li>` : ""}</ul>` : ""}
+      ${a.implement_summary ? `<h4>4. Implementation</h4><p style="margin:6px 0 0;font-size:14px">${esc(a.implement_summary)}</p>` : ""}
+      ${a.mr_url ? `<h4>5. Merge request</h4><p style="margin:6px 0 0;font-size:14px"><a href="${esc(a.mr_url)}" target="_blank" rel="noopener">${esc(a.mr_url)}</a>${a.mr_summary ? ` · ${esc(a.mr_summary)}` : ""}</p>` : a.mr_summary ? `<h4>5. Merge request</h4><p style="margin:6px 0 0;font-size:14px">${esc(a.mr_summary)}</p>` : ""}
+      <details class="audit" style="margin-top:16px"><summary>Every step the agent took (${a.phases.reduce((n, p) => n + p.steps.length, 0)})</summary>
+        ${a.phases.filter(p => p.steps.length).map(p => `<h4>${esc(p.title)}</h4><ul class="steplog">${p.steps.map(s => `<li class="${s.aws ? "aws" : ""} ${s.ok ? "" : "no"}">#${s.n} ${esc(s.summary)}</li>`).join("")}</ul>`).join("")}
+      </details>
+    </div></section>`;
+}
+
 function aiBlock(r) {
   const ai = r.ai;
   if (!ai) return "";
