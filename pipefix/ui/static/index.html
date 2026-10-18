@@ -381,7 +381,7 @@ dialog .scopes { font-size: 13.5px; margin: 8px 0 0; padding-left: 18px; }
 .unread { font-size: 11px; color: var(--ink-3); margin-left: 6px; }
 
 /* ---------- agent ---------- */
-.agent-steps { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 8px; margin-top: 18px; }
+.agent-steps { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 8px; margin-top: 18px; }
 .agent-steps .ph { border: 1px solid var(--rule); border-radius: 10px; padding: 10px 12px; background: var(--surface); font-size: 13px; }
 .agent-steps .ph b { display: block; font-weight: 600; }
 .agent-steps .ph small { color: var(--ink-3); }
@@ -401,7 +401,7 @@ dialog .scopes { font-size: 13.5px; margin: 8px 0 0; padding-left: 18px; }
 .agentrun { max-width: 980px; padding-top: 24px; }
 .agentrun h1 { font-size: 26px; font-weight: 600; }
 .agentrun .sub { color: var(--ink-3); font-size: 13.5px; margin-top: 4px; display: flex; gap: 14px; flex-wrap: wrap; }
-.rail5 { list-style: none; display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 6px; padding: 0; margin: 20px 0 0; }
+.rail5 { list-style: none; display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 6px; padding: 0; margin: 20px 0 0; }
 .rail5 li { border-radius: 9px; padding: 9px 11px; background: var(--surface); border: 1px solid var(--rule); font-size: 12.5px; color: var(--ink-3); position: relative; overflow: hidden; }
 .rail5 li b { display: block; font-size: 13px; color: var(--ink-2); font-weight: 600; }
 .rail5 li.done { border-color: color-mix(in srgb, var(--A) 50%, var(--rule)); }
@@ -445,6 +445,20 @@ dialog .scopes { font-size: 13.5px; margin: 8px 0 0; padding-left: 18px; }
 .ev.call.pending details, .ev.call.pending .refused { display: none; }
 .ev.call.pending .head::after { content: "running"; font-size: 11px; color: var(--C); margin-left: auto; }
 .ev.vote { font-size: 13px; color: var(--ink-2); padding: 6px 10px; border-radius: 8px; background: var(--C-wash); }
+.who { font-size: 10.5px; font-weight: 700; letter-spacing: .03em; border-radius: 999px; padding: 1px 8px; border: 1px solid currentColor; white-space: nowrap; }
+.who.primary { color: var(--A); } .who.aws_expert { color: var(--G); } .who.nextflow_expert { color: var(--C); }
+.ev.thought .who { margin-right: 6px; }
+.ev.thought.aws_expert { border-left-color: var(--G); } .ev.thought.nextflow_expert { border-left-color: var(--C); }
+.ev.call.aws_expert { border-left: 3px solid var(--G); } .ev.call.nextflow_expert { border-left: 3px solid var(--C); }
+.ev.review { font-size: 13px; padding: 8px 12px; border-radius: 8px; background: var(--T-wash); color: var(--ink); }
+.ev.review.agree, .ev.agree { background: var(--A-wash); }
+.ev.agree { font-size: 13px; padding: 8px 12px; border-radius: 8px; font-weight: 600; }
+.ev-round { margin: 14px 0 4px; font-size: 12px; font-weight: 600; color: var(--ink-2); }
+.reviews { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 10px; }
+.reviews .rv { border: 1px solid var(--rule); border-radius: 10px; padding: 10px 12px; background: var(--sunk); font-size: 13px; }
+.reviews .rv ul { margin: 6px 0 0; padding-left: 18px; } .reviews .rv li { margin: 4px 0; }
+.f-confirmed { color: var(--A); font-weight: 600; } .f-wrong, .f-unsupported { color: var(--T); font-weight: 600; }
+@media (max-width: 860px) { .reviews { grid-template-columns: 1fr; } }
 .ev.stop { font-size: 13px; color: var(--T); padding: 6px 10px; border-radius: 8px; background: var(--T-wash); }
 .typing { display: flex; align-items: center; gap: 8px; padding: 10px 16px 14px; color: var(--ink-3); font-size: 13px; }
 .typing i { width: 6px; height: 6px; border-radius: 50%; background: var(--ink-3); animation: dot 1.2s infinite; }
@@ -903,9 +917,12 @@ function showProgress(job) {
 const SPARK = '<svg class="spark" viewBox="0 0 20 20" aria-hidden="true"><path d="M10 1.5 12 8l6.5 2-6.5 2-2 6.5L8 12l-6.5-2L8 8z" fill="var(--C)"/></svg>';
 const TRACE = { id: null, events: [] };
 function toolKind(t) {
-  return /^(omics|logs|cloudtrail|batch|ec2|ecr|s3)_/.test(t) ? ["aws", "AWS"] : t.startsWith("facts_") ? ["fact", "FACT"] :
-    t.startsWith("web_") ? ["web", "WEB"] : t.startsWith("repo_") ? ["repo", "REPO"] : t.startsWith("finish_") ? ["finish", "CHECKPOINT"] : ["repo", "STEP"];
+  return t === "aws_call" ? ["aws", "AWS"] : t === "aws_describe_api" ? ["aws", "AWS API DOCS"] : t === "calculate" ? ["fact", "CALC"] :
+    t === "inspect_call" ? ["repo", "INSPECT"] : t.startsWith("web_") ? ["web", "WEB"] : t.startsWith("repo_") ? ["repo", "REPO"] :
+    t.startsWith("finish_") ? ["finish", "CHECKPOINT"] : ["repo", "STEP"];
 }
+const WHO = { primary: "Primary", aws_expert: "AWS expert", nextflow_expert: "Nextflow expert" };
+const who = a => `<span class="who ${esc(a || "primary")}">${esc(WHO[a] || a || "Primary")}</span>`;
 function argText(a) {
   if (!a) return "";
   return Object.entries(a).map(([k, v]) => `${k}=${typeof v === "object" ? JSON.stringify(v) : v}`).join("  ").slice(0, 220);
@@ -916,22 +933,25 @@ function tlHTML(events) {
   for (const e of events) if (e.kind === "result") results[e.n] = e;
   return events.map(e => {
     if (e.kind === "phase") return `<div class="ev-phase">${esc(e.text)}</div>`;
-    if (e.kind === "thought") return `<div class="ev thought"><span class="lbl">Thinking</span>${esc(e.text)}</div>`;
+    if (e.kind === "thought") return `<div class="ev thought ${esc(e.agent || "")}"><span class="lbl">${who(e.agent)}Thinking</span>${esc(e.text)}</div>`;
     if (e.kind === "vote") return `<div class="ev vote">${esc(e.text)}</div>`;
+    if (e.kind === "round") return `<div class="ev-round">${esc(e.text)}</div>`;
+    if (e.kind === "review") return `<div class="ev review ${e.verdict === "agree" ? "agree" : ""}">${who(e.agent)} ${esc(e.text)}</div>`;
+    if (e.kind === "agree") return `<div class="ev agree">${esc(e.text)}</div>`;
     if (e.kind === "stop") return `<div class="ev stop">${esc(e.text)}</div>`;
     if (e.kind !== "call") return "";
     const r = results[e.n], [k, label] = toolKind(e.tool);
     const state = !r ? "pending" : r.ok ? "" : "no";
-    return `<div class="ev call ${state}"><div class="head"><span class="num">#${e.n}</span><span class="kind ${k}">${label}</span><code class="tool">${esc(e.tool)}</code><span class="args">${esc(argText(e.args))}</span></div>
+    return `<div class="ev call ${state} ${esc(e.agent || "")}"><div class="head">${who(e.agent)}<span class="num">#${e.n}</span><span class="kind ${k}">${label}</span><code class="tool">${esc(e.tool)}</code><span class="args">${esc(argText(e.args))}</span></div>
       <p class="why"><b>Why</b>${esc(e.text)}</p>
       ${r ? (r.ok ? `<details><summary>Result</summary><pre>${esc(r.text)}</pre></details>` : `<div class="refused">${esc(r.text)}</div>`) : ""}</div>`;
   }).join("");
 }
 function railHTML(events, status, error) {
-  const titles = ["1. Debug", "2. Research solutions", "3. Pick the best solution", "4. Implement it", "5. Open the merge request"];
+  const titles = ["1. Debug", "2. Research solutions", "3. Pick the best solution", "3b. Expert review", "4. Implement it", "5. Open the merge request"];
   const seen = events.filter(e => e.kind === "phase").map(e => e.text);
   const cur = seen.length - 1;
-  const calls = p => events.filter(e => e.kind === "call" && e.phase === ["debug", "research", "decide", "implement", "mr"][p]).length;
+  const calls = p => events.filter(e => e.kind === "call" && e.phase === ["debug", "research", "decide", "review", "implement", "mr"][p]).length;
   return `<ol class="rail5">${titles.map((t, i) => {
     const st = i < cur || (status === "done" && !error && i === cur) ? "done" : i === cur ? (error ? "stop" : "active") : "";
     return `<li class="${st}"><b>${esc(t)}</b>${i <= cur ? `${calls(i)} call${calls(i) === 1 ? "" : "s"}` : "waiting"}</li>`;
@@ -942,8 +962,8 @@ function showAgentProgress(job) {
   TRACE.events.push(...(job.trace || []));
   let box = $("#agentrun");
   if (!box) {
-    main.innerHTML = `<div class="agentrun" id="agentrun"><h1>The agent is investigating ${esc(job.label)}</h1>
-      <div class="sub"><span id="ar-elapsed"></span><span>Read-only on AWS · every step checked by pipefix</span></div>
+    main.innerHTML = `<div class="agentrun" id="agentrun"><h1>The agents are investigating ${esc(job.label)}</h1>
+      <div class="sub"><span id="ar-elapsed"></span><span>${who("primary")} proposes · ${who("aws_expert")} ${who("nextflow_expert")} fact-check · read-only on AWS</span></div>
       <div id="ar-rail"></div>
       <section class="think running" aria-label="Agent reasoning"><header>${SPARK}<h2>Agent reasoning</h2><span class="count" id="ar-count"></span></header>
         <div class="tl" id="ar-tl" aria-live="polite"></div><div class="typing" id="ar-typing"><i></i><i></i><i></i><span>Thinking</span></div></section></div>`;
@@ -954,7 +974,9 @@ function showAgentProgress(job) {
   $("#ar-rail").innerHTML = railHTML(TRACE.events, job.status, job.error);
   const n = TRACE.events.filter(e => e.kind === "call").length;
   $("#ar-count").textContent = `${n} call${n === 1 ? "" : "s"}`;
-  $("#ar-elapsed").textContent = `${Math.round((Date.now() - box.dataset.start) / 1000)} s`;
+  const last = TRACE.events[TRACE.events.length - 1];
+  const secs = last?.elapsed ?? Math.round((Date.now() - box.dataset.start) / 1000);
+  $("#ar-elapsed").textContent = `${Math.floor(secs / 60)}m ${Math.round(secs % 60)}s · ${((last?.tokens || 0) / 1000).toFixed(1)}k tokens`;
   if (stick) tl.scrollTop = tl.scrollHeight;
 }
 
@@ -1206,22 +1228,35 @@ function agentBlock(r) {
   const d = a.diagnosis || {};
   const chosen = a.decision?.chosen;
   return `<section class="section" aria-labelledby="agent-h"><h2 id="agent-h">What the agent did <span class="badge">AI agent</span></h2>
-    <p class="lede"><code>${esc(a.model)}</code> ran the five required steps itself: it chose and made ${a.aws_calls} read-only AWS calls and ${a.fact_calls || 0} fact lookups, read the repo, researched the docs, compared solutions, implemented the best one${a.mr_url ? " and opened the merge request" : ""}. pipefix enforced the order, each step's allowed commands and every evidence check${a.refused ? `, and refused ${a.refused} call(s) that broke a rule` : ""}.</p>
+    <p class="lede">Three agents (<code>${esc(a.model)}</code>): the ${who("primary")} agent found the AWS API calls itself (${a.aws_calls} read-only calls in total), read the repo and the docs and proposed a fix; the ${who("aws_expert")} and ${who("nextflow_expert")} fact-checked it with their own calls${a.review?.agreed ? ` and agreed after ${a.review.rounds.length} round${a.review.rounds.length === 1 ? "" : "s"}` : a.review?.rounds?.length ? ", but did not agree" : ""}${a.mr_url ? "; then the primary opened the merge request" : ""}. pipefix enforced the steps, read-only access and every evidence check${a.refused ? `, and refused ${a.refused} call(s) that broke a rule` : ""}.${a.usage ? ` ${Math.round((a.elapsed || 0) / 60)} min · ${((a.usage.prompt + a.usage.completion) / 1000).toFixed(0)}k tokens.` : ""}</p>
     ${a.error ? `<div class="result-msg err" style="margin-top:14px">${esc(a.error)}</div>` : ""}
     <div class="agent-steps">${phases}</div>
     <div class="aibox">
       ${d.root_cause ? `<h3>1. Debug</h3><blockquote>${esc(d.root_cause)}</blockquote><div class="quotes">${(d.evidence || []).map(e => `<blockquote class="quote"><span class="for">call #${e.call} · ${esc(e.tool)}</span>${esc(e.excerpt)}</blockquote>`).join("")}</div>` : ""}
       ${a.candidates.length ? `<h4>2. Research: candidate solutions</h4><div style="overflow-x:auto"><table class="cands"><thead><tr><th></th><th>Candidate</th><th>Settings</th><th>Pros / cons</th><th>Checks</th></tr></thead><tbody>
         ${a.candidates.map(c => `<tr class="${c.id === chosen ? "chosen" : ""}"><td><b>${esc(c.id)}</b>${c.id === chosen ? ' <span class="badge">chosen</span>' : ""}</td><td>${esc(c.title)}</td>
-          <td>${Object.entries(c.settings).map(([k, v]) => `<code>${esc(k)} = ${esc(v)}</code>${c.derivations?.[k] ? `<span class="deriv">= ${esc(c.derivations[k].formula)}; ${Object.entries(c.derivations[k].inputs).map(([n, i]) => `${esc(n)}=${esc(i.value)} (call #${esc(i.call)})`).join(", ")}</span>` : ""}`).join("<br>") || "no config change"}${(c.notes || []).filter(n => n.startsWith("lands on")).map(n => `<span class="deriv" style="color:var(--C)">${esc(n)}</span>`).join("")}</td>
+          <td>${Object.entries(c.settings).map(([k, v]) => `<code>${esc(k)} = ${esc(v)}</code>${c.derivations?.[k] ? `<span class="deriv">= ${esc(c.derivations[k].formula)}; ${Object.entries(c.derivations[k].inputs).map(([n, i]) => `<span title="${esc(i.quote || "")}">${esc(n)}=${esc(i.value)} (${i.call != null ? `call #${esc(i.call)}` : `source [${esc(i.source)}]`})</span>`).join(", ")}</span>` : ""}`).join("<br>") || "no config change"}</td>
           <td>${esc(c.pros)}${c.cons ? `<br><span style="color:var(--ink-3)">${esc(c.cons)}</span>` : ""}</td>
           <td>${c.valid ? "passed" : `<span class="rej">${esc(c.problems.join("; "))}</span>`}</td></tr>`).join("")}</tbody></table></div>` : ""}
-      ${a.decision?.chosen ? `<h4>3. Decision${a.decision.votes ? ` <span class="badge">${Object.entries(a.decision.votes).map(([k, v]) => `${esc(k)}: ${v}`).join(" · ")} vote${a.decision.unstable ? ", unstable" : ""}</span>` : ""}</h4><p style="margin:6px 0 0;font-size:14px">${esc(a.decision.reasons)}</p><ul class="plain">${Object.entries(a.decision.why_not || {}).map(([k, v]) => `<li>Not ${esc(k)}: ${esc(v)}</li>`).join("")}${a.decision.risks ? `<li>Risks: ${esc(a.decision.risks)}</li>` : ""}</ul>` : ""}
+      ${a.decision?.chosen ? `<h4>3. Decision</h4><p style="margin:6px 0 0;font-size:14px">${esc(a.decision.reasons)}</p><ul class="plain">${Object.entries(a.decision.why_not || {}).map(([k, v]) => `<li>Not ${esc(k)}: ${esc(v)}</li>`).join("")}${a.decision.risks ? `<li>Risks: ${esc(a.decision.risks)}</li>` : ""}</ul>` : ""}
+      ${reviewHTML(a)}
       ${a.implement_summary ? `<h4>4. Implementation</h4><p style="margin:6px 0 0;font-size:14px">${esc(a.implement_summary)}</p>` : ""}
       ${a.mr_url ? `<h4>5. Merge request</h4><p style="margin:6px 0 0;font-size:14px"><a href="${esc(a.mr_url)}" target="_blank" rel="noopener">${esc(a.mr_url)}</a>${a.mr_summary ? ` · ${esc(a.mr_summary)}` : ""}</p>` : a.mr_summary ? `<h4>5. Merge request</h4><p style="margin:6px 0 0;font-size:14px">${esc(a.mr_summary)}</p>` : ""}
-      ${a.trace?.length ? `<details class="audit final" style="margin-top:16px"><summary>The agent's reasoning: ${a.trace.filter(e => e.kind === "call").length} calls, every thought and why it made each call</summary>
+      ${a.trace?.length ? `<details class="audit final" style="margin-top:16px" ${a.refused || a.error ? "open" : ""}><summary>The agents' reasoning: ${a.trace.filter(e => e.kind === "call").length} calls, every thought and why each call was made</summary>
         <section class="think" style="margin-top:12px"><header>${SPARK}<h2>Agent reasoning</h2></header><div class="tl">${tlHTML(a.trace)}</div></section></details>` : ""}
     </div></section>`;
+}
+
+function reviewHTML(a) {
+  const rounds = a.review?.rounds || [];
+  if (!rounds.length) return "";
+  const evq = e => e.call != null ? `call #${e.call}` : `source [${e.source}]`;
+  return `<h4>3b. Expert review <span class="badge">${a.review.agreed ? "agreed" : "not agreed"}</span></h4>` + rounds.map(r => `
+    <p class="note" style="margin:8px 0 0">Round ${r.round}: candidate ${esc(r.chosen)} ${Object.entries(r.settings || {}).map(([k, v]) => `<code>${esc(k)} = ${esc(v)}</code>`).join(" ")}</p>
+    <div class="reviews">${Object.values(r.reviews).map(v => `<div class="rv">${who(v.agent)} <b>${esc(v.verdict)}</b>
+      <ul>${v.checks.map(c => `<li><span class="f-${esc(c.finding)}">${esc(c.finding)}</span> · <i>${esc(c.covers)}</i>: ${esc(c.claim)}<br><span style="color:var(--ink-2)">${esc(c.explanation)}</span>${c.evidence.length ? `<br><small style="color:var(--ink-3)">${c.evidence.slice(0, 3).map(e => `${evq(e)}: “${esc(e.quote.slice(0, 160))}”`).join(" · ")}</small>` : ""}</li>`).join("")}</ul>
+      ${v.questions?.length ? `<p style="margin:6px 0 0"><b>Questions:</b> ${v.questions.map(esc).join(" · ")}</p>` : ""}</div>`).join("")}</div>
+    ${r.response ? `<p style="margin:8px 0 0;font-size:13.5px">${who("primary")} <b>${esc(r.response.action)}d</b>: ${r.response.answers.map(x => esc(x.answer)).join(" · ")}</p>` : ""}`).join("");
 }
 
 function aiBlock(r) {

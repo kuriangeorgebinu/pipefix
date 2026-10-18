@@ -9,7 +9,7 @@ import time
 from dataclasses import dataclass, field
 from typing import Any, Callable
 
-READ_ONLY_PREFIXES = ("describe_", "get_", "list_", "lookup_", "head_")
+READ_ONLY_PREFIXES = ("describe_", "get_", "list_", "lookup_", "head_", "filter_", "batch_get_")
 
 
 class AwsUnavailable(RuntimeError):
@@ -55,7 +55,7 @@ class Clients:
                 # Anything else (denied, not found, not offered in this region...) is recorded and skipped,
                 # so one unreadable resource never stops the investigation.
                 self.errors.append(f"{service}:{op} -> {code}")
-                return {"__error__": code}
+                return {"__error__": code, "message": str(e)[:400]}
         return {}
 
 

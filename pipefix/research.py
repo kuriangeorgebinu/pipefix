@@ -41,7 +41,7 @@ SITES = {
 }
 FETCH_HOSTS = ("docs.aws.amazon.com", "nextflow.io", "www.nextflow.io", "training.nextflow.io", "nf-co.re",
                "registry.terraform.io", "github.com", "raw.githubusercontent.com")
-ALLOWED = ("memory", "time", "cpus", "errorStrategy", "maxRetries", "queue", "disk")
+ALLOWED = ("memory", "time", "cpus", "errorStrategy", "maxRetries", "queue", "disk", "resourceLimits")
 MAX_SOURCES, PAGE_CHARS, EXCERPT_CHARS = 12, 120_000, 5000
 QUOTE_MIN, QUOTE_MAX = 30, 400
 _KEYWORDS = re.compile(r"memory|GiB|\bGB\b|retr(y|ies)|errorStrategy|exit ?(status|code)|maxRetries|instance|vCPU|"
@@ -316,6 +316,10 @@ def check(name: str, directive: str, value: str, ctx: dict) -> str | None:
         known = plat.get("ondemand_queues") or []
         if known and v.strip("'") not in known:
             return f"queue {v} was not found in this account"
+    elif directive == "resourceLimits":
+        part = rf"(memory:\s*{_NUM}\s*\.GB|cpus:\s*\d+|time:\s*{_NUM}\s*\.h)"
+        if not re.fullmatch(rf"\[\s*{part}(\s*,\s*{part})*\s*\]", v):
+            return f"resourceLimits `{v}` is not in the accepted form, e.g. [ memory: 30.GB ]"
     elif directive == "disk":
         m = re.fullmatch(rf"'?{_NUM}\s*\.?\s*GB'?", v)
         if not m or not 1 <= float(m.group(1)) <= 4000:
@@ -449,7 +453,7 @@ def research(inv: Investigation | None, diagnoses: list[Diagnosis], cfg: RepoCon
                 used += mine
         if not settings:
             continue
-        why = redact(str(fx.get("rationale", "")))[:900]
+        why = redact(str(fx.get("rationale", "")))[:3000]
         cites = sorted({e["n"] for e in used})
         prev = next((p for p in res.fixes if p.name == name), None)
         if prev:  # the model sometimes splits one process over several entries: merge them

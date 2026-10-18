@@ -195,7 +195,7 @@ def test_unexpected_aws_errors_are_recorded_not_fatal():
     from pipefix.aws.session import AwsUnavailable
     c = fake_clients({"ec2": {"describe_instance_types": lambda **k: (_ for _ in ()).throw(ClientError("InvalidInstanceType"))},
                       "sts": {"get_caller_identity": lambda **k: (_ for _ in ()).throw(ClientError("ExpiredToken"))}})
-    assert c.call("ec2", "describe_instance_types", InstanceTypes=["nope.x"]) == {"__error__": "InvalidInstanceType"}
+    assert c.call("ec2", "describe_instance_types", InstanceTypes=["nope.x"]) ["__error__"] == "InvalidInstanceType"
     assert c.errors == ["ec2:describe_instance_types -> InvalidInstanceType"]
     with pytest.raises(AwsUnavailable, match="ExpiredToken"):
         c.call("sts", "get_caller_identity")

@@ -190,7 +190,7 @@ def main(argv: list[str] | None = None) -> int:
 
     s = sub.add_parser("bench", help="measure the agent's accuracy on recorded failures with known-correct fixes")
     s.add_argument("--case", action="append", help="only this case id (repeatable)")
-    s.add_argument("--samples", type=int, default=3, help="independent decisions to vote on (default 3)")
+    s.add_argument("--samples", type=int, default=3, help="(unused; kept for compatibility)")
     s.add_argument("--out", help="save the scores as JSON")
     s.add_argument("--env-file", action="append", help="read the AI keys from this .env file")
 

@@ -1,14 +1,15 @@
-"""The agent: five enforced steps, a command dictionary, evidence checks, derived numbers, the playbook,
-decision voting, the reasoning trace, read-only AWS and redaction. The model is scripted and AWS is faked."""
+"""The agents: steps in order, a generic read-only AWS tool the agent drives itself, verbatim evidence, derived
+numbers, hard rules, the two expert reviewers and their agreement, redaction. The models are scripted and AWS is
+faked; the AWS API reference is botocore's real one."""
 import io
 import json
 
 import pytest
 
 from pipefix import keys
-from pipefix.agent import COMMANDS, PHASES, Agent, _in_phase, first_number, safe_eval, to_json
+from pipefix.agent import (COMMANDS, PHASES, Agent, _excerpt_in, _in_phase, _Refused, _shows, first_number, safe_eval,
+                           to_json)
 from pipefix.aws.session import Clients
-from pipefix.facts import instance_for, memory_need, size_memory
 from pipefix.report import body, pr_title
 
 ACCT = "522921672742"
@@ -39,8 +40,8 @@ def ai_keys(monkeypatch):
 
 
 class FakeAws:
-    def __init__(self):
-        self.seen = []
+    def __init__(self, exit_code=1):
+        self.seen, self.exit_code = [], exit_code
 
     def factory(self, service):
         aws = self
@@ -60,11 +61,10 @@ class FakeAws:
         if (service, op) == ("omics", "list_run_tasks"):
             return {"items": [{"taskId": "6130366", "name": "DEMO_GENOMICS:SORT_READS (sample1)", "status": "FAILED",
                                "cpus": 2, "memory": 2}]}
-        if (service, op) == ("omics", "list_runs"):
-            return {"items": [{"id": "999", "workflowId": "1348298", "status": "COMPLETED", "name": "ok-run",
-                               "stopTime": "2026-10-10T10:00:00Z"}]}
         if (service, op) == ("logs", "get_log_events"):
-            return {"events": [{"message": "[sort_reads] allocating a 12 GB sort buffer"}, {"message": "MemoryError"}]}
+            return {"events": [{"message": "[sort_reads] allocating a 12 GB sort buffer"},
+                               {"message": "MemoryError" if self.exit_code == 1 else "Killed"},
+                               {"message": f"Command exit status: {self.exit_code}"}]}
         if (service, op) == ("s3", "get_object"):
             return {"Body": io.BytesIO(b"sort_reads.py reads.fq out.fq --buffer-gb 12\n")}
         return {}
@@ -72,22 +72,27 @@ class FakeAws:
 
 DOC_AWS = ("<main><p>Container resource allocations are hard limits. If a task runs out of memory, the task generates "
            "an error log and exits.</p><p>HealthOmics reserves a small amount of memory (5%) for management and "
-           "logging agents.</p></main>")
+           "logging agents.</p><p>The omics.r.large instance has 2 vCPUs and 16 GiB of memory.</p></main>")
 DOC_NF = ("<main><p>The errorStrategy directive allows you to define how an error condition is managed by the "
-          "process.</p><p>Use task.attempt to increase the memory on each retry, together with maxRetries.</p></main>")
+          "process.</p><p>Use task.attempt to increase the memory on each retry, together with maxRetries.</p>"
+          "<p>Exit status 137 means the process was killed with SIGKILL, often by the out of memory killer, so a "
+          "retry with more memory can pass.</p></main>")
 Q_MEM = "Container resource allocations are hard limits. If a task runs out of memory, the task generates an error log and exits."
+Q_RES = "HealthOmics reserves a small amount of memory (5%) for management and logging agents."
+Q_INST = "The omics.r.large instance has 2 vCPUs and 16 GiB of memory."
 Q_ES = "The errorStrategy directive allows you to define how an error condition is managed by the process."
 Q_MR = "Use task.attempt to increase the memory on each retry, together with maxRetries."
-Q_RES = "HealthOmics reserves a small amount of memory (5%) for management and logging agents."
 
-NEED_CALL = 9      # facts_memory_need in the script below
-DERIV_15 = {"memory": {"formula": "ceil(need_gib * 1.15 / 0.95)", "inputs": {"need_gib": {"value": 12, "call": NEED_CALL}}}}
+LOG = 4          # the call that read the task log
+DERIV_15 = {"memory": {"formula": "ceil(need_gib * 1.15 / (1 - reserve))", "inputs": {
+    "need_gib": {"value": 12, "call": LOG, "quote": "allocating a 12 GB sort buffer"},
+    "reserve": {"value": 0.05, "source": 1, "quote": "reserves a small amount of memory (5%)"}}}}
 
 GOOD_CANDIDATES = [
     {"id": "A", "title": "Size memory to the 12 GiB buffer", "process": "SORT_READS",
      "settings": {"memory": "{ 15.GB * task.attempt }"}, "derivations": DERIV_15,
      "rationale": "12 GiB need + 15% headroom over the 5% reserve", "pros": "passes on attempt 1", "cons": "r.large",
-     "evidence": [{"setting": "memory", "source": 1, "quote": Q_MEM}]},
+     "evidence": [{"setting": "memory", "source": 1, "quote": Q_MEM}, {"setting": "memory", "source": 1, "quote": Q_INST}]},
     {"id": "B", "title": "Lower params.sort_buffer_gb instead", "process": "SORT_READS", "settings": {},
      "rationale": "smaller buffer fits 2 GB", "pros": "cheap", "cons": "slower sort, changes the tool",
      "evidence": [{"source": 1, "quote": Q_RES}]},
@@ -96,34 +101,63 @@ DECISION_A = {"chosen": "A", "reasons": "A sizes memory to what the script reall
                                         "so attempt 1 passes; B changes the tool's behaviour.",
               "why_not": {"B": "changes the tool and slows the sort"}, "risks": "bigger instance"}
 
+CHECK_ROOT = {"covers": "root_cause", "claim": "the 12 GB buffer does not fit 2 GB", "finding": "confirmed",
+              "explanation": "the log shows it", "evidence": [{"call": LOG, "quote": "allocating a 12 GB sort buffer"}]}
+CHECK_MEM = {"covers": "memory", "claim": "15 GB leaves room after the 5% reserve", "finding": "confirmed",
+             "explanation": "the docs give the reserve", "evidence": [{"source": 1, "quote": Q_RES}]}
 
-def R(name, args, reason="checking"):
+
+def R(name, args, reason="checking this"):
     return (name, {**args, "reason": reason})
+
+
+def aws(service, op, params, reason="reading the run"):
+    return R("aws_call", {"service": service, "operation": op, "params": params}, reason)
 
 
 def script():
     return [
-        [R("omics_get_run", {"id": "5472488"}, "start from the run: status and failure reason")],                     # 1
-        [R("omics_list_run_tasks", {"id": "5472488", "status": "FAILED"}),                                              # 2
-         R("logs_get_log_events", {"logGroupName": "/aws/omics/WorkflowLog", "logStreamName": "run/5472488/task/6130366"})],  # 3
-        [R("web_search", {"query": "too early", "site": "aws"})],                                                       # 4 refused
-        [R("s3_get_task_file", {"Bucket": BUCKET.replace(ACCT, "<account-id>"), "Key": "work/ab/cdef/reads.fq"})],    # 5 refused
-        [R("s3_get_task_file", {"Bucket": BUCKET.replace(ACCT, "<account-id>"), "Key": "work/ab/cdef/.command.sh"})],  # 6
-        [R("repo_read_file", {"path": "main.nf"}), R("repo_trace_setting", {"process": "SORT_READS"}),                 # 7, 8
-         R("facts_memory_need", {"process": "SORT_READS"}, "how much memory the command itself asks for")],             # 9
+        # ---- primary: debug ----
+        [R("aws_describe_api", {"service": "omics", "operation": "GetRun"}, "find the call that describes a run")],  # 1
+        [aws("omics", "GetRun", {"id": "5472488"}, "start from the run: status and failure reason")],                  # 2
+        [aws("omics", "ListRunTasks", {"id": "5472488", "status": "FAILED"}),                                          # 3
+         aws("logs", "GetLogEvents", {"logGroupName": "/aws/omics/WorkflowLog",
+                                      "logStreamName": "run/5472488/task/6130366"})],                                  # 4
+        [aws("s3", "GetObject", {"Bucket": BUCKET.replace(ACCT, "<account-id>"), "Key": "work/ab/reads.fq"})],         # 5 refused
+        [aws("secretsmanager", "GetSecretValue", {"SecretId": "x"})],                                                  # 6 refused
+        [aws("omics", "StartRun", {"workflowId": "1"})],                                                               # 7 refused
+        [aws("s3", "GetObject", {"Bucket": BUCKET.replace(ACCT, "<account-id>"), "Key": "work/ab/cdef/.command.sh"})], # 8
+        [R("repo_read_file", {"path": "main.nf"}), R("repo_resolve_config", {"process": "SORT_READS"})],               # 9, 10
         [R("finish_debug", {"process": "SORT_READS", "failure_class": "out_of_memory", "exit_code": 1, "root_cause": "x",
-                             "evidence": [{"call": 3, "excerpt": "Killed by the OOM killer"}]})],                        # 10 refused
+                             "evidence": [{"call": LOG, "quote": "Killed by the OOM killer"}]})],                        # 11 refused
         [R("finish_debug", {"process": "SORT_READS", "tag": "sample1", "failure_class": "out_of_memory", "exit_code": 1,
                              "memory_requested_gb": 2, "cpus": 2,
                              "root_cause": "The script allocates a 12 GB buffer but the task had 2 GB; Python raised MemoryError (exit 1).",
-                             "evidence": [{"call": 3, "excerpt": '"lines": ["[sort_reads] allocating a 12 GB sort buffer", "MemoryError"'},
-                                          {"call": 7, "excerpt": "--buffer-gb ${params.sort_buffer_gb}"}]})],          # 11
-        [R("web_search", {"query": "HealthOmics task out of memory s3://x/y 5472488", "site": "aws"})],                # 12
-        [R("web_search", {"query": "nextflow errorStrategy retry memory", "site": "nextflow"})],                        # 13
-        [R("web_read_page", {"source": 1}), R("web_read_page", {"source": 2}),                                          # 14, 15
-         R("facts_size_memory", {"need_gib": 12, "cpus": 2}, "playbook size for a 12 GiB need")],                       # 16
-        [R("finish_research", {"candidates": GOOD_CANDIDATES})],                                                       # 17
-        [R("finish_decision", DECISION_A)],                                                                             # 18
+                             "evidence": [{"call": LOG, "quote": "allocating a 12 GB sort buffer ... Command exit status: 1"},
+                                          {"call": 9, "quote": "--buffer-gb ${params.sort_buffer_gb}"}]})],             # 12
+        # ---- research ----
+        [R("web_search", {"query": "HealthOmics task out of memory s3://x/y 5472488", "site": "aws"})],                # 13
+        [R("web_search", {"query": "nextflow errorStrategy retry memory", "site": "nextflow"})],                        # 14
+        [R("web_read_page", {"source": 1}), R("web_read_page", {"source": 2}),                                          # 15, 16
+         R("calculate", {"expression": "ceil(n * 1.15 / 0.95)", "inputs": {"n": 12}})],                                # 17
+        [R("finish_research", {"candidates": GOOD_CANDIDATES})],                                                       # 18
+        [R("finish_decision", DECISION_A)],                                                                             # 19
+        # ---- review round 1 ----
+        [R("inspect_call", {"call": LOG}), R("web_read_page", {"source": 1}, "check the reserve myself")],            # 20, 21 (aws)
+        [R("finish_review", {"verdict": "agree", "checks": [CHECK_ROOT, CHECK_MEM]})],                                 # 22
+        [R("repo_read_file", {"path": "main.nf"}, "what does the command ask for")],                                   # 23 (nf)
+        [R("finish_review", {"verdict": "object", "checks": [
+            {**CHECK_ROOT, "evidence": [{"call": 23, "quote": "--buffer-gb ${params.sort_buffer_gb}"}]},
+            {"covers": "memory", "claim": "15% headroom", "finding": "unsupported", "explanation": "why 15%?"}],
+            "questions": ["Why is 15 GB enough after the platform reserve?"]})],                                         # 24
+        [R("finish_response", {"action": "defend", "answers": [
+            {"question": "Why is 15 GB enough?", "answer": "15 GB minus the 5% reserve leaves 14.25 GB, above the 12 GB buffer.",
+             "evidence": [{"source": 1, "quote": Q_RES}]}]})],                                                          # 25
+        # ---- review round 2 ----
+        [R("finish_review", {"verdict": "agree", "checks": [CHECK_ROOT, CHECK_MEM]})],                                 # 26
+        [R("finish_review", {"verdict": "agree", "checks": [
+            {**CHECK_ROOT, "evidence": [{"call": 23, "quote": "--buffer-gb ${params.sort_buffer_gb}"}]}, CHECK_MEM]})],  # 27
+        # ---- implement / mr ----
         [R("implement_apply", {})],
         [R("finish_implement", {"summary": "SORT_READS gets 15 GiB, sized to its 12 GiB buffer."})],
         [R("mr_open", {})],
@@ -145,90 +179,151 @@ class ScriptedLLM:
         self.i += 1
         return {"choices": [{"message": {"content": f"Thinking about step {self.i}.", "tool_calls": [
             {"id": f"t{self.i}-{j}", "type": "function", "function": {"name": n, "arguments": json.dumps(a)}}
-            for j, (n, a) in enumerate(turn)]}}]}
+            for j, (n, a) in enumerate(turn)]}}], "usage": {"prompt_tokens": 100, "completion_tokens": 10}}
 
     def get_text(self, url, timeout=15):
         return DOC_AWS if "aws" in url else DOC_NF
 
 
-def run_agent(repo, turns=None, samples=1, **kw):
-    aws = FakeAws()
+def run_agent(repo, turns=None, fake=None, **kw):
+    fake = fake or FakeAws()
     llm = ScriptedLLM(turns or script())
-    agent = Agent(Clients(aws.factory, region="us-east-1"), repo, {"omics_run": "5472488"}, http=llm,
-                  decision_samples=samples, **kw)
-    return agent.run(), aws, llm
+    agent = Agent(Clients(fake.factory, region="us-east-1"), repo, {"omics_run": "5472488"}, http=llm, **kw)
+    return agent.run(), fake, llm
 
 
-def research_turn(turns):
-    return next(k for k, t in enumerate(turns) if t[0][0] == "finish_research")
+def turn_of(turns, tool, nth=0):
+    return [k for k, t in enumerate(turns) if t[0][0] == tool][nth]
 
 
-def first_research(res):
-    return next(s for s in res.steps if s.tool == "finish_research")
+def first(res, tool):
+    return next(s for s in res.steps if s.tool == tool)
 
 
-# ---------- the facts ----------
+def with_research(candidates, tries=1):
+    """The script up to research, then these candidates (repeated), the decision and the reviews."""
+    turns = script()
+    i = turn_of(turns, "finish_research")
+    return turns[:i] + [[R("finish_research", {"candidates": candidates})]] * tries + turns[i + 1:]
 
-def test_facts():
-    assert memory_need("sort_reads.py --buffer-gb ${params.b}", {"b": "12"})["need_gib"] == 12
-    assert memory_need("gatk --java-options '-Xmx30g' X")["need_gib"] == 30
-    assert memory_need("samtools sort -@ 4 -m 2G in.bam")["need_gib"] == 8
-    assert memory_need("echo hi")["need_gib"] is None
-    assert instance_for(2, 15)["instance"] == "omics.r.large" and instance_for(2, 15)["usable_memory_gib"] == 14.25
-    assert instance_for(4, 16)["instance"] == "omics.m.xlarge"          # more vCPUs moves the instance
-    assert instance_for(2, 2000)["fits"] is False
-    assert size_memory(12, 2)["request_gib"] == 15
-    assert safe_eval("ceil(need * 1.15 / 0.95)", {"need": 12}) == 15
-    for bad in ("__import__('os').system('x')", "open('f')", "need.real", "[1][0]"):
+
+def add_check(turns, check):
+    """Every review also checks one more setting."""
+    for j, t in enumerate(turns):
+        if t[0][0] == "finish_review":
+            turns[j] = [(n, {**a, "checks": a["checks"] + [check]}) for n, a in t]
+    return turns
+
+
+# ---------- helpers ----------
+
+def test_arithmetic_numbers_and_quotes():
+    assert safe_eval("ceil(need * 1.15 / (1 - r))", {"need": 12, "r": 0.05}) == 15
+    for bad in ("__import__('os').system('x')", "open('f')", "need.real", "[1][0]", "True + 1"):
         with pytest.raises(ValueError):
             safe_eval(bad, {"need": 12})
-    assert first_number("memory", "{ [16.GB * task.attempt, 30.GB].min() }") == 16
+    assert first_number("memory", "{ 15.GB * task.attempt }") == 15 and first_number("cpus", "4") == 4
+    assert first_number("memory", "{ [16.GB * task.attempt, 30.GB].min() }") is None    # never a guess
+    assert first_number("memory", "{ 2 * task.attempt }") is None
+    assert _shows("allocating a 12 GB sort buffer", 12) and _shows("reserves (5%)", 0.05) and _shows("-Xmx30g", 30)
+    assert not _shows("allocating a 12 GB sort buffer", 1.2) and not _shows("version 112", 12)
+
+
+def test_evidence_may_join_verbatim_pieces_in_order_and_close_together():
+    out = '{"lines": ["[sort_reads] allocating a 12 GB sort buffer", "buf = bytearray(size)", "MemoryError"]}'
+    assert _excerpt_in("[sort_reads] allocating a 12 GB sort buffer ... MemoryError", out)
+    assert _excerpt_in("allocating a 12 GB sort buffer … bytearray(size)", out)
+    assert not _excerpt_in("MemoryError ... allocating a 12 GB sort buffer", out)        # wrong order
+    assert not _excerpt_in("allocating a 16 GB sort buffer ... MemoryError", out)          # not verbatim
+    assert not _excerpt_in("allocating ... Me", out)                                       # piece too short
+    far = '{"a": "allocating a buffer", "pad": "' + "x " * 400 + '", "b": "MemoryError"}'
+    assert not _excerpt_in("allocating a buffer ... MemoryError", far)                     # spliced from far apart
+
+
+def test_aws_policy_is_read_only_and_never_reads_secrets_or_data():
+    pol = Agent._policy
+    pol("omics", "GetRun", {"id": "1"})
+    pol("logs", "FilterLogEvents", {"logGroupName": "g"})
+    pol("s3", "GetObject", {"Bucket": "b", "Key": "work/ab/.command.log"})
+    for svc, op, params in [("omics", "StartRun", {}), ("batch", "TerminateJob", {}), ("s3", "PutObject", {}),
+                            ("secretsmanager", "GetSecretValue", {}), ("kms", "DescribeKey", {}),
+                            ("sts", "GetCallerIdentity", {}), ("ecr", "GetAuthorizationToken", {}),
+                            ("omics", "GetReadSet", {}), ("ssm", "GetParameter", {}),
+                            ("s3", "GetObject", {"Key": "data/sample1.bam"}), ("logs", "GetLogEvents", {"unmask": True})]:
+        with pytest.raises(_Refused):
+            pol(svc, op, params)
+
+
+def test_the_api_reference_tool_documents_operations_and_parameters(repo):
+    agent = Agent(None, repo, {"omics_run": "1"})
+    ops = agent._describe_api({"service": "omics"})["read_only_operations"]
+    assert "GetRun" in ops and "GetRunTask" in ops and "StartRun" not in ops and "GetReadSet" not in ops
+    d = agent._describe_api({"service": "logs", "operation": "GetLogEvents"})
+    assert "logStreamName" in d["input"]["required"] and "limit" in d["input"]["members"]
+    with pytest.raises(_Refused, match="did you mean"):
+        agent._describe_api({"service": "omic"})
+    assert agent._describe_api({"service": "secretsmanager"})["read_only_operations"] == []
 
 
 # ---------- the full run ----------
 
-def test_agent_runs_the_five_steps_in_order_and_builds_a_derived_fix(repo):
-    res, aws, llm = run_agent(repo)
+def test_three_agents_run_the_steps_and_agree_on_a_derived_fix(repo):
+    res, fake, llm = run_agent(repo)
     assert res.error == "" and res.done, res.error
     assert [s.phase for s in res.steps] == sorted([s.phase for s in res.steps], key=PHASES.index)
-    assert [(s, o) for s, o, _ in aws.seen] == [("omics", "get_run"), ("omics", "list_run_tasks"),
-                                                 ("logs", "get_log_events"), ("s3", "get_object")]
-    assert ACCT not in json.dumps(llm.requests)
-    assert aws.seen[3][2]["Bucket"] == BUCKET and aws.seen[3][2]["Range"] == "bytes=-65536"
-    assert [s.tool for s in res.steps if not s.ok] == ["web_search", "s3_get_task_file", "finish_debug"]
+    assert [(s, o) for s, o, _ in fake.seen] == [("omics", "get_run"), ("omics", "list_run_tasks"),
+                                                  ("logs", "get_log_events"), ("s3", "get_object")]
+    assert fake.seen[3][2]["Bucket"] == BUCKET and fake.seen[3][2]["Range"] == "bytes=-65536"   # account put back
+    assert ACCT not in json.dumps(llm.requests)                                                 # never sent to a model
+    refused = [(s.tool, s.args.get("operation")) for s in res.steps if not s.ok]
+    assert refused == [("aws_call", "GetObject"), ("aws_call", "GetSecretValue"), ("aws_call", "StartRun"),
+                       ("finish_debug", None)]
     assert llm.searches[0] == "HealthOmics task out of memory site:docs.aws.amazon.com"
     new = res.patch.files["conf/pipefix.config"][1]
-    assert "{ 15.GB * task.attempt }" in new
-    assert "resourceLimits = [ memory: 15.GB ]" in new        # no retry of exit 1: capped at the first attempt
-    assert "errorStrategy" not in new and "cpus" not in new
+    assert "{ 15.GB * task.attempt }" in new and "errorStrategy" not in new and "cpus" not in new
+    assert "resourceLimits" not in new                                  # nothing the agents did not choose
     a = res.candidates[0]
-    assert a["derivations"]["memory"]["formula"] == "ceil(need_gib * 1.15 / 0.95)"
-    assert any("omics.r.large" in n and "14.25" in n for n in a["notes"])
+    assert a["derivations"]["memory"]["inputs"]["reserve"]["url"] == "https://docs.aws.amazon.com/doc"
     assert a["evidence"][0]["setting"] == "memory"
+    # the review: round 1 split, the primary defended with evidence, round 2 both agree
+    rounds = res.review["rounds"]
+    assert res.review["agreed"] and len(rounds) == 2
+    assert {k: v["verdict"] for k, v in rounds[0]["reviews"].items()} == {"aws_expert": "agree",
+                                                                          "nextflow_expert": "object"}
+    assert rounds[0]["response"]["action"] == "defend"
+    assert {s.agent for s in res.steps} == {"primary", "aws_expert", "nextflow_expert"}
+    assert first(res, "inspect_call").agent == "aws_expert"
     res.patch.agent = res
     text = body(res.diagnoses, res.patch, res.inv)
-    assert "## How the agent worked" in text and "ceil(need_gib * 1.15 / 0.95)" in text
+    assert "## How the agents worked" in text and "Both experts agreed" in text
+    assert "ceil(need_gib * 1.15 / (1 - reserve))" in text
     assert pr_title(res.patch).startswith("pipefix agent:")
-    assert to_json(res)["aws_calls"] == 4
+    j = to_json(res)
+    assert j["aws_calls"] == 4 and j["review"]["agreed"] and j["usage"]["requests"] == len(llm.requests)
 
 
-def test_reasoning_trace_records_thoughts_reasons_and_results(repo):
+def test_reasoning_trace_names_the_agent_and_its_reasons(repo):
     events = []
     res, _, llm = run_agent(repo, on_event=events.append)
     kinds = [e["kind"] for e in res.trace]
-    assert kinds[0] == "phase" and "thought" in kinds and "call" in kinds and "result" in kinds
-    assert events == res.trace                                   # streamed live as well
-    call = next(e for e in res.trace if e["kind"] == "call" and e["tool"] == "facts_memory_need")
-    assert call["text"] == "how much memory the command itself asks for" and call["n"] == NEED_CALL
-    refused = next(e for e in res.trace if e["kind"] == "result" and not e["ok"])
-    assert refused["text"].startswith("REFUSED")
-    assert all("reason" not in s.args for s in res.steps)       # the reason is not passed to the command
-    assert res.steps[0].reason == "start from the run: status and failure reason"
-    schema = llm.requests[0]["tools"][0]["function"]["parameters"]
-    assert "reason" in schema["required"]
-    assert [e["text"] for e in res.trace if e["kind"] == "phase"] == ["1. Debug", "2. Research solutions",
-                                                                      "3. Pick the best solution", "4. Implement it",
-                                                                      "5. Open the merge request"]
+    assert kinds[0] == "phase" and {"thought", "call", "result", "round", "review", "agree"} <= set(kinds)
+    assert events == res.trace
+    call = next(e for e in res.trace if e["kind"] == "call" and e["tool"] == "aws_describe_api")
+    assert call["text"] == "find the call that describes a run" and call["agent"] == "primary"
+    assert any(e["agent"] == "nextflow_expert" and e["kind"] == "review" and e["verdict"] == "object" for e in res.trace)
+    assert all("reason" not in s.args for s in res.steps)
+    assert "reason" in llm.requests[0]["tools"][0]["function"]["parameters"]["required"]
+    assert [e["text"] for e in res.trace if e["kind"] == "phase"] == [
+        "1. Debug", "2. Research solutions", "3. Pick the best solution", "3b. Expert review", "4. Implement it",
+        "5. Open the merge request"]
+    assert res.trace[-1]["tokens"] > 0 and "elapsed" in res.trace[-1]
+
+
+def test_a_call_without_a_reason_is_refused(repo):
+    turns = script()
+    turns.insert(1, [("aws_call", {"service": "omics", "operation": "GetRun", "params": {"id": "5472488"}})])
+    res, _, _ = run_agent(repo, turns=turns)
+    assert "needs a 'reason'" in res.steps[1].output and not res.steps[1].ok
 
 
 def test_mr_step_uses_the_opener_only_when_allowed(repo):
@@ -239,162 +334,237 @@ def test_mr_step_uses_the_opener_only_when_allowed(repo):
     assert res2.mr_url == "" and res2.patch is not None
 
 
+def test_the_agent_composes_parameters_and_bad_ones_are_explained(repo):
+    turns = script()
+    turns.insert(1, [aws("omics", "GetRun", {"runId": "5472488"})])
+    turns.insert(2, [aws("omics", "GetRunz", {"id": "5472488"})])
+    res, _, _ = run_agent(repo, turns=turns)
+    assert 'Unknown parameter in input: "runId"' in res.steps[1].output
+    assert "has no operation 'GetRunz'" in res.steps[2].output and "GetRun" in res.steps[2].output
+
+
+# ---------- debug ----------
+
+def test_debug_diagnosis_is_cross_checked(repo):
+    turns = script()
+    k = turn_of(turns, "finish_debug", 1)
+    good = turns[k][0][1]
+    turns[k:k] = [[R("finish_debug", {**good, "process": "NOT_A_PROCESS"})],
+                  [R("finish_debug", {**good, "exit_code": 137})]]
+    res, _, _ = run_agent(repo, turns=turns)
+    outs = [s.output for s in res.steps if s.tool == "finish_debug" and not s.ok]
+    assert any("is not defined in the pipeline repo" in o for o in outs)
+    assert any("exit_code 137 must be shown" in o for o in outs)
+    assert res.diagnosis["process"] == "SORT_READS" and res.diagnosis["exit_code"] == 1   # the good one was accepted
+
+
 # ---------- derived numbers ----------
 
 @pytest.mark.parametrize("deriv,why", [
     (None, "needs a derivation"),
-    ({"formula": "need_gib * 1.15 / 0.95", "inputs": {"need_gib": {"value": 12, "call": NEED_CALL}}}, "the formula gives 14.5"),
-    ({"formula": "ceil(need_gib * 1.15 / 0.95)", "inputs": {"need_gib": {"value": 13, "call": NEED_CALL}}}, "not shown in the output"),
-    ({"formula": "ceil(need_gib * 1.15 / 0.95)", "inputs": {"need_gib": {"value": 12, "call": 77}}}, "not shown in the output"),
-    ({"formula": "__import__('os').getpid()", "inputs": {}}, "cannot be evaluated"),
+    ({"formula": "need_gib * 1.15 / (1 - reserve)", "inputs": DERIV_15["memory"]["inputs"]}, "the formula gives 14.5"),
+    ({"formula": "ceil(need_gib * 1.15 / 0.95)", "inputs": {"need_gib": {"value": 13, "call": LOG,
+                                                                          "quote": "allocating a 12 GB sort buffer"}}},
+     "the quote does not show that number"),
+    ({"formula": "ceil(need_gib * 1.15 / 0.95)", "inputs": {"need_gib": {"value": 12, "call": LOG,
+                                                                          "quote": "allocating a 12 GB buffer"}}},
+     "quote is not in the output of call"),
+    ({"formula": "ceil(need_gib * 1.15 / 0.95)", "inputs": {"need_gib": {"value": 12, "call": 77, "quote": "12 GB"}}},
+     "was not made"),
+    ({"formula": "15", "inputs": {"need_gib": {"value": 12, "call": LOG, "quote": "allocating a 12 GB sort buffer"}}},
+     "must use its inputs"),
+    ({"formula": "__import__('os').getpid()", "inputs": {"os": {"value": 12, "call": LOG,
+                                                                 "quote": "allocating a 12 GB sort buffer"}}},
+     "cannot be evaluated"),
+    ({"formula": "ceil(r * 300)", "inputs": {"r": {"value": 0.05, "source": 1,
+                                                   "quote": "reserves a small amount of memory (5%)"}}},
+     "derived from what the task needs"),                    # out of memory: the need must come from the run or repo
 ])
-def test_numbers_must_be_derived_from_traced_inputs(repo, deriv, why):
-    turns = script()
-    i = research_turn(turns)
+def test_numbers_must_be_derived_from_quoted_inputs(repo, deriv, why):
     a = {**GOOD_CANDIDATES[0], "derivations": {"memory": deriv} if deriv else {}}
-    res, _, _ = run_agent(repo, turns=turns[:i] + [[R("finish_research", {"candidates": [a, GOOD_CANDIDATES[1]]})]] * 4)
-    first = first_research(res)
-    assert not first.ok and why in first.output, first.output
+    res, _, _ = run_agent(repo, turns=with_research([a, GOOD_CANDIDATES[1]], tries=4))
+    st = first(res, "finish_research")
+    assert why in st.output and not res.candidates[0]["valid"] if st.ok else why in st.output, st.output
 
 
-# ---------- the playbook ----------
+# ---------- hard rules ----------
 
-@pytest.mark.parametrize("settings,derivs,why", [
+@pytest.mark.parametrize("settings,extra,why", [
     ({"memory": "{ 15.GB * task.attempt }",
-      "errorStrategy": "{ task.exitStatus in ((130..145) + 104 + 1) ? 'retry' : 'finish' }"}, DERIV_15,
-     "exit 1 comes from the tool itself"),                                           # no retry for a deterministic error
-    ({"memory": "{ 15.GB * task.attempt }", "maxRetries": "3"}, DERIV_15, "maxRetries has no effect"),
+      "errorStrategy": "{ task.exitStatus in ((130..145) + 104 + 1) ? 'retry' : 'finish' }"}, [],
+     "retrying exit 1 needs a verified doc quote"),                                  # deterministic: no retry
+    ({"memory": "{ 15.GB * task.attempt }", "maxRetries": "3"}, [{"setting": "maxRetries", "source": 2, "quote": Q_MR}],
+     "maxRetries has no effect"),
     ({"memory": "{ 15.GB * task.attempt }",
-      "errorStrategy": "{ task.exitStatus in (130..140) ? 'retry' : 'finish' }"}, DERIV_15, "drops codes"),
-    ({"memory": "{ 13.GB * task.attempt }"},
-     {"memory": {"formula": "ceil(need_gib + 1)", "inputs": {"need_gib": {"value": 12, "call": NEED_CALL}}}},
-     "would run out again"),                                                          # 13 * 0.95 < 12 * 1.05
-    ({"memory": "{ 15.GB * task.attempt }", "cpus": "4"}, DERIV_15, "cpus = 4: a number needs a derivation"),
+      "errorStrategy": "{ task.exitStatus in (130..140) ? 'retry' : 'finish' }"}, [], "drops codes"),
+    ({"memory": "{ 15.GB * task.attempt }", "cpus": "4"}, [], "cpus = 4: a number needs a derivation"),
+    ({"memory": "{ [15.GB * task.attempt, 30.GB].min() }"}, [], "accepted form"),
 ])
-def test_playbook_rules(repo, settings, derivs, why):
-    turns = script()
-    i = research_turn(turns)
-    a = {**GOOD_CANDIDATES[0], "settings": settings, "derivations": derivs}
-    res, _, _ = run_agent(repo, turns=turns[:i] + [[R("finish_research", {"candidates": [a, GOOD_CANDIDATES[1]]})]] * 4)
-    first = first_research(res)
-    assert not first.ok and why in first.output, first.output
+def test_hard_rules(repo, settings, extra, why):
+    a = {**GOOD_CANDIDATES[0], "settings": settings, "evidence": GOOD_CANDIDATES[0]["evidence"] + extra}
+    res, _, _ = run_agent(repo, turns=with_research([a, GOOD_CANDIDATES[1]], tries=4))
+    st = first(res, "finish_research")
+    assert why in st.output and not res.candidates[0]["valid"] if st.ok else why in st.output, st.output
 
 
-def test_retry_is_allowed_for_a_transient_kill(repo):
+def test_healthomics_sizing_must_cite_the_instance_docs(repo):
+    a = {**GOOD_CANDIDATES[0], "evidence": GOOD_CANDIDATES[0]["evidence"][:1]}
+    res, _, _ = run_agent(repo, turns=with_research([a, GOOD_CANDIDATES[1]], tries=4))
+    assert "must cite the HealthOmics instance-type documentation" in first(res, "finish_research").output
+
+
+def test_more_retries_are_allowed_when_the_observed_kill_is_retried(repo):
     turns = script()
-    k = next(j for j, t in enumerate(turns) if t[0][0] == "finish_debug" and "tag" in t[0][1])
-    turns[k] = [(n, {**a, "exit_code": 137}) for n, a in turns[k]]
-    i = research_turn(turns)
+    k = turn_of(turns, "finish_debug", 1)
+    dbg = turns[k][0][1]
+    turns[k] = [R("finish_debug", {**dbg, "exit_code": 137, "evidence": [
+        {"call": LOG, "quote": "allocating a 12 GB sort buffer ... Command exit status: 137"},
+        {"call": 9, "quote": "--buffer-gb ${params.sort_buffer_gb}"}]})]
     a = {**GOOD_CANDIDATES[0], "settings": {"memory": "{ 15.GB * task.attempt }", "maxRetries": "2"},
-         "evidence": [{"setting": "maxRetries", "source": 2, "quote": Q_MR}]}
-    turns[i] = [R("finish_research", {"candidates": [a, GOOD_CANDIDATES[1]]})]
-    res, _, _ = run_agent(repo, turns=turns)
+         "evidence": GOOD_CANDIDATES[0]["evidence"] + [{"setting": "maxRetries", "source": 2, "quote": Q_MR}]}
+    turns[turn_of(turns, "finish_research")] = [R("finish_research", {"candidates": [a, GOOD_CANDIDATES[1]]})]
+    add_check(turns, {"covers": "maxRetries", "claim": "2 retries", "finding": "confirmed", "explanation": "ok",
+                      "evidence": [{"source": 2, "quote": Q_MR}]})
+    res, _, _ = run_agent(repo, turns=turns, fake=FakeAws(exit_code=137))
     assert res.done, res.error
-    assert "resourceLimits = [ memory: 45.GB ]" in res.patch.files["conf/pipefix.config"][1]  # 15 * (1 + 2 retries)
+    assert "maxRetries = 2" in res.patch.files["conf/pipefix.config"][1]
 
 
-# ---------- research and decision rules ----------
-
-def test_research_must_be_grounded_and_decision_must_pick_a_valid_candidate(repo):
-    turns = script()
-    i = research_turn(turns)
-    bad = json.loads(json.dumps(GOOD_CANDIDATES))
-    bad[0]["settings"]["memory"] = "{ 'rm -rf /'.execute(); 15.GB }"
-    c = json.loads(json.dumps(GOOD_CANDIDATES[0]))
-    c["id"], c["settings"]["memory"] = "C", "{ 16.GB * task.attempt }"
-    c["derivations"] = {"memory": {"formula": "ceil(need_gib * 1.3)", "inputs": {"need_gib": {"value": 12, "call": NEED_CALL}}}}
-    turns[i:i + 2] = [[R("finish_research", {"candidates": bad[:1]})],
-                      [R("finish_research", {"candidates": bad})],
-                      [R("finish_research", {"candidates": bad + [c]})],
-                      [R("finish_decision", {"chosen": "A", "reasons": "x" * 50, "why_not": {"B": "y", "C": "z"}})],
-                      [R("finish_decision", {"chosen": "C", "reasons": "C sizes memory to the buffer and is the only "
-                                                                        "config candidate that passed every check.",
-                                              "why_not": {"A": "failed the checks", "B": "changes the tool"}})]]
+def test_a_candidate_whose_settings_are_all_no_ops_is_refused(repo):
+    noop = {"id": "C", "title": "only widen the retry rule", "process": "SORT_READS", "rationale": "r",
+            "settings": {"errorStrategy": "{ task.exitStatus in ((130..145) + 104) ? 'retry' : 'finish' }"},
+            "evidence": [{"source": 2, "quote": Q_ES}]}
+    turns = with_research(GOOD_CANDIDATES + [noop])
+    turns[turn_of(turns, "finish_decision")] = [R("finish_decision", {**DECISION_A, "why_not": {
+        "B": "changes the tool", "C": "changes nothing"}})]
     res, _, _ = run_agent(repo, turns=turns)
-    msgs = [s.output for s in res.steps if not s.ok]
-    assert any("give at least 2" in m for m in msgs)
-    assert any("fixable by config" in m for m in msgs)
-    assert any("candidate A failed the checks" in m for m in msgs)
-    assert res.done and res.decision["chosen"] == "C"
-    assert "16.GB" in res.patch.files["conf/pipefix.config"][1]
+    c = res.candidates[2]
+    assert not c["valid"] and "changes nothing" in c["problems"][0] and c["declared"] == 1
 
 
 def test_quotes_no_op_settings_and_prefixes(repo):
-    turns = script()
-    i = research_turn(turns)
-    a = {"id": "A", "title": "prefix, a no-op and unlabelled quotes", "process": "SORT_READS",
+    a = {**GOOD_CANDIDATES[0], "title": "prefix, a no-op and unlabelled quotes",
          "settings": {"withName: 'SORT_READS' memory": "{ 15.GB * task.attempt }",
                       "errorStrategy": "{ task.exitStatus in ((130..145) + 104) ? 'retry' : 'finish' }"},
-         "derivations": DERIV_15, "rationale": "r",
          "evidence": [{"source": 1, "quote": Q_MEM}, {"setting": "memory", "source": 2, "quote": Q_ES},
-                      {"source": 1, "quote": "a sentence that is not on the page at all"}]}
-    turns[i] = [R("finish_research", {"candidates": [a, GOOD_CANDIDATES[1]]})]
-    res, _, _ = run_agent(repo, turns=turns)
+                      {"source": 1, "quote": Q_INST}, {"source": 1, "quote": "a sentence that is not on the page at all"}]}
+    res, _, _ = run_agent(repo, turns=with_research([a, GOOD_CANDIDATES[1]]))
     assert res.done, res.error
     ca = res.candidates[0]
     assert ca["valid"] and ca["settings"] == {"memory": "{ 15.GB * task.attempt }"}
     assert any("errorStrategy dropped: same as now" in n for n in ca["notes"])
     assert any("not used" in n for n in ca["notes"])
-    assert [e["setting"] for e in ca["evidence"]] == ["memory", "context"]   # Q_ES is not about memory
+    assert [e["setting"] for e in ca["evidence"]] == ["memory", "context", "memory"]   # Q_ES is not about memory
 
 
 def test_citing_the_call_that_read_a_page_maps_to_that_source(repo):
-    turns = script()
-    i = research_turn(turns)
     cands = json.loads(json.dumps(GOOD_CANDIDATES))
-    cands[0]["evidence"][0]["source"] = 14            # call #14 was web_read_page(source=1)
-    turns[i] = [R("finish_research", {"candidates": cands})]
-    res, _, llm = run_agent(repo, turns=turns)
+    cands[0]["evidence"][0] = {"setting": "memory", "call": 15, "quote": Q_MEM}   # call #15 read source 1
+    res, _, _ = run_agent(repo, turns=with_research(cands))
     assert res.done, res.error
     assert res.candidates[0]["evidence"][0]["n"] == 1
-    tool_msgs = [m["content"] for m in llm.requests[-1]["messages"] if m["role"] == "tool"]
-    assert any('"cite_as_source": 1' in t for t in tool_msgs)
 
 
-def test_a_non_config_choice_stops_cleanly_for_failures_config_cannot_fix(repo):
+# ---------- the expert review ----------
+
+def test_review_rules_are_enforced(repo):
     turns = script()
-    k = next(j for j, t in enumerate(turns) if t[0][0] == "finish_debug" and "tag" in t[0][1])
-    turns[k] = [(n, {**a, "failure_class": "container_error"}) for n, a in turns[k]]
-    i = next(j for j, t in enumerate(turns) if t[0][0] == "finish_decision")
-    turns[i] = [R("finish_decision", {"chosen": "B", "reasons": "For a container error the image must be fixed; no "
-                                                                 "config change helps here.",
-                                       "why_not": {"A": "memory is not the problem"}})]
+    k = turn_of(turns, "finish_review")
+    turns[k:k] = [
+        [R("finish_review", {"verdict": "agree", "checks": [CHECK_ROOT]})],                                  # misses memory
+        [R("finish_review", {"verdict": "agree", "checks": [
+            CHECK_ROOT, {**CHECK_MEM, "finding": "unsupported"}]})],                                         # agree + objection
+        [R("finish_review", {"verdict": "agree", "checks": [
+            CHECK_ROOT, {**CHECK_MEM, "evidence": [{"source": 1, "quote": "a quote that is not on that page"}]}]})],
+    ]
     res, _, _ = run_agent(repo, turns=turns)
-    assert "not a pipeline config change" in res.error and res.patch is None
+    outs = [s.output for s in res.steps if s.tool == "finish_review" and not s.ok]
+    assert "missing ['memory']" in outs[0]
+    assert "so the verdict is 'object'" in outs[1]
+    assert "needs verified evidence" in outs[2]
+    assert any(s.ok and s.tool == "finish_review" and s.agent == "aws_expert" for s in res.steps)   # 4th try passes
 
 
-# ---------- voting ----------
-
-def test_decision_votes_majority_wins_and_split_is_flagged(repo):
-    b = {"chosen": "B", "reasons": "B keeps the instance small and avoids paying for a memory-optimised instance.",
-         "why_not": {"A": "costs more"}}
+def test_a_reviewer_must_bring_its_own_evidence(repo):
     turns = script()
-    i = next(j for j, t in enumerate(turns) if t[0][0] == "finish_decision")
-    turns[i + 1:i + 1] = [[R("finish_decision", b)], [R("finish_decision", b)]]      # two more samples choose B
-    res, _, _ = run_agent(repo, turns=turns, samples=3)
-    assert res.decision["votes"] == {"A": 1, "B": 2} and res.decision["chosen"] == "B" and not res.decision["unstable"]
-    assert "not a pipeline config change" in res.error                                 # B has no config change
-    assert any(e["kind"] == "vote" and "B wins by majority" in e["text"] for e in res.trace)
+    k = turn_of(turns, "finish_review", 1)       # the Nextflow expert's turns are k-1 (read) and k (review)
+    turns.insert(k - 1, [R("finish_review", {"verdict": "agree", "checks": [CHECK_ROOT, CHECK_MEM]})])
+    res, _, _ = run_agent(repo, turns=turns)
+    st = next(s for s in res.steps if s.tool == "finish_review" and s.agent == "nextflow_expert")
+    assert not st.ok and "a call you made or a page you read" in st.output
 
+
+def test_defending_needs_evidence_and_revising_is_rechecked(repo):
     turns = script()
-    turns[i + 1:i + 1] = [[R("finish_decision", b)], [R("finish_decision", {"chosen": "Z"})]]   # A, B, invalid
-    res, _, _ = run_agent(repo, turns=turns, samples=3)
-    assert res.decision["chosen"] == "A" and res.decision["unstable"] and res.done
+    k = turn_of(turns, "finish_response")
+    rev = {"id": "A", "title": "Size memory to the buffer, 16 GB", "process": "SORT_READS",
+           "settings": {"memory": "{ 16.GB * task.attempt }"}, "rationale": "more headroom",
+           "derivations": {"memory": {"formula": "ceil(need_gib * 1.2 / (1 - reserve))",
+                                      "inputs": DERIV_15["memory"]["inputs"]}},
+           "evidence": GOOD_CANDIDATES[0]["evidence"]}
+    turns[k:k + 1] = [
+        [R("finish_response", {"action": "defend", "answers": [{"question": "q", "answer": "trust me"}]})],
+        [R("finish_response", {"action": "revise", "answers": [{"question": "q", "answer": "a"}],
+                               "candidates": [{**rev, "settings": {"memory": "{ 99.GB * task.attempt }"}},
+                                              GOOD_CANDIDATES[1]], **DECISION_A})],
+        [R("finish_response", {"action": "revise", "answers": [{"question": "Why 15%?", "answer": "use 20% headroom"}],
+                               "candidates": [rev, GOOD_CANDIDATES[1]], **DECISION_A})],
+    ]
+    res, _, _ = run_agent(repo, turns=turns)
+    outs = [s.output for s in res.steps if s.tool == "finish_response" and not s.ok]
+    assert "each with verified evidence" in outs[0]
+    assert "the formula gives 16, but the value says 99" in outs[1]
+    assert res.done and "{ 16.GB * task.attempt }" in res.patch.files["conf/pipefix.config"][1]
+    assert res.review["rounds"][0]["response"]["action"] == "revise"
+    assert res.review["rounds"][1]["settings"] == {"memory": "{ 16.GB * task.attempt }"}
 
 
-def test_command_dictionary_is_read_only_and_phase_scoped():
-    from pipefix.aws.session import READ_ONLY_PREFIXES
-    for name, c in COMMANDS.items():
-        assert c["phase"] in PHASES
-        if c.get("aws"):
-            assert c["aws"][1].startswith(READ_ONLY_PREFIXES), name
-    for p in PHASES:
-        assert sum(1 for c in COMMANDS.values() if c["phase"] == p and c.get("finish")) == 1
-    assert _in_phase("facts_size_memory", "research") and not _in_phase("omics_get_run", "research")
+def test_no_agreement_means_no_change_and_no_mr(repo):
+    turns = script()
+    obj = [R("finish_review", {"verdict": "object", "checks": [
+        {**CHECK_ROOT, "evidence": [{"call": 23, "quote": "--buffer-gb ${params.sort_buffer_gb}"}]},
+        {"covers": "memory", "claim": "15 GB", "finding": "unsupported", "explanation": "not proven"}],
+        "questions": ["prove it"]})]
+    defend = turns[turn_of(turns, "finish_response")]
+    k = turn_of(turns, "finish_review", 2)
+    agree_aws = turns[k]
+    turns[k:] = [agree_aws, obj, defend, agree_aws, obj]          # rounds 2 and 3: the Nextflow expert still objects
+    opened = []
+    res, _, _ = run_agent(repo, turns=turns, allow_mr=True, mr_opener=lambda r: opened.append(r) or "x")
+    assert "did not agree" in res.error and res.patch is None and not opened
+    assert len(res.review["rounds"]) == 3 and not res.review["agreed"]
+
+
+def test_an_agreed_non_config_answer_stops_cleanly(repo):
+    turns = script()
+    k = turn_of(turns, "finish_debug", 1)
+    turns[k] = [(n, {**a, "failure_class": "container_error"}) for n, a in turns[k]]
+    turns[turn_of(turns, "finish_decision")] = [R("finish_decision", {
+        "chosen": "B", "reasons": "For a container error the image must be fixed; no config change helps here.",
+        "why_not": {"A": "memory is not the problem"}})]
+    nochange = {"covers": "no_change", "claim": "no config change", "finding": "confirmed", "explanation": "ok",
+                "evidence": [{"source": 1, "quote": Q_RES}]}
+    for j in [turn_of(turns, "finish_review", n) for n in range(4)]:
+        turns[j] = [(nm, {**a, "verdict": "agree", "checks": [a["checks"][0], nochange], "questions": []})
+                    for nm, a in turns[j]]
+    r = turn_of(turns, "finish_response")
+    del turns[r:r + 3]                                              # round 1 agrees: no response, no round 2
+    res, _, _ = run_agent(repo, turns=turns)
+    assert res.review["agreed"] and "not a pipeline config change" in res.error and res.patch is None
+
+
+# ---------- structure ----------
+
+def test_tools_are_phase_scoped_with_one_finish_each():
+    for p in ("debug", "research", "decide", "review", "respond", "implement", "mr"):
+        assert sum(1 for c in COMMANDS.values() if p in c["phases"] and c.get("finish")) == 1, p
+    assert _in_phase("aws_call", "review") and not _in_phase("aws_call", "decide")
+    assert not _in_phase("inspect_call", "debug")
+    assert not any(n.startswith(("omics_", "logs_", "facts_")) for n in COMMANDS)   # nothing pre-wired
 
 
 def test_stops_cleanly_when_a_step_cannot_finish(repo):
-    turns = script()[:1] + [[R("omics_get_run", {"id": "5472488"})]] * 40
+    turns = script()[:1] + [[aws("omics", "GetRun", {"id": "5472488"})]] * 40
     res, _, _ = run_agent(repo, turns=turns)
     assert "did not finish within its limits" in res.error and res.phase_reached == "debug" and res.patch is None
 
@@ -403,42 +573,22 @@ def test_benchmark_cases_build_and_score(tmp_path):
     from pipefix.agent import AgentResult
     from pipefix.bench import CASES, _reply, make_repo, score
     from pipefix.configtrace import load_repo
+    assert len(CASES) == 10
     for c in CASES:
         repo = make_repo(c, tmp_path / c.id)
         cfg = load_repo(repo)
         assert c.process in cfg.processes and cfg.trace(c.process).effective("memory")
-        assert _reply(c, "omics", "get_task", {}) == {} and _reply(c, "omics", "list_run_tasks", {})["items"]
-    good = AgentResult(decision={"chosen": "A"}, candidates=[{"id": "A", "settings": {"memory": "{ 15.GB * task.attempt }"}}])
-    good.patch = object()
-    assert score(CASES[0], good) | {} == score(CASES[0], good)
-    r = score(CASES[0], good)
+        assert _reply(c, "omics", "get_run", {})["logLocation"]["engineLogStream"].endswith("run/9001/engine")
+    ok = AgentResult(decision={"chosen": "A"}, candidates=[{"id": "A", "settings": {"memory": "{ 15.GB * task.attempt }"}}],
+                     review={"rounds": [{}], "agreed": True})
+    ok.patch = object()
+    r = score(CASES[0], ok)
     assert r["value"] and r["justified"] and r["decision"]
     bad = AgentResult(decision={"chosen": "A"}, candidates=[{"id": "A", "settings": {"memory": "{ 20.GB * task.attempt }",
-                                                                                     "cpus": "4"}}])
+                                                                                     "time": "{ 2.h * task.attempt }"}}],
+                      review={"rounds": [{}], "agreed": True})
     bad.patch = object()
     r = score(CASES[0], bad)
-    assert not r["value"] and not r["justified"]
-
-
-def test_a_candidate_whose_settings_are_all_no_ops_is_refused(repo):
-    turns = script()
-    i = research_turn(turns)
-    noop = {"id": "C", "title": "only widen the retry rule", "process": "SORT_READS", "rationale": "r",
-            "settings": {"errorStrategy": "{ task.exitStatus in ((130..145) + 104) ? 'retry' : 'finish' }"},
-            "evidence": [{"source": 2, "quote": Q_ES}]}
-    turns[i] = [R("finish_research", {"candidates": GOOD_CANDIDATES + [noop]})]
-    turns[i + 1] = [R("finish_decision", {**DECISION_A, "why_not": {"B": "changes the tool", "C": "changes nothing"}})]
-    res, _, _ = run_agent(repo, turns=turns)
-    c = res.candidates[2]
-    assert not c["valid"] and "changes nothing it claims to" in c["problems"][0] and c["declared"] == 1
-    assert res.candidates[1]["declared"] == 0 and res.candidates[1]["valid"]
-
-
-def test_evidence_may_join_verbatim_pieces_in_order():
-    from pipefix.agent import _excerpt_in
-    out = '{"lines": ["[sort_reads] allocating a 12 GB sort buffer", "buf = bytearray(size)", "MemoryError"]}'
-    assert _excerpt_in("[sort_reads] allocating a 12 GB sort buffer ... MemoryError", out)
-    assert _excerpt_in("allocating a 12 GB sort buffer \u2026 bytearray(size)", out)
-    assert not _excerpt_in("MemoryError ... allocating a 12 GB sort buffer", out)        # wrong order
-    assert not _excerpt_in("allocating a 16 GB sort buffer ... MemoryError", out)          # not verbatim
-    assert not _excerpt_in("allocating ... Me", out)                                       # piece too short
+    assert not r["value"] and not r["justified"]                 # time is not allowed for this case
+    ok.review = {"rounds": [{}], "agreed": False}
+    assert not score(CASES[0], ok)["decision"]                   # no agreement, no pass

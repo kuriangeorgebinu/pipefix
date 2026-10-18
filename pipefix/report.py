@@ -45,22 +45,30 @@ def pr_title(patch: Patch) -> str:
     return f"pipefix{kind}: fix failed pipeline tasks ({head})"
 
 
+def _ev(e: dict) -> str:
+    where = f"call #{e['call']} `{e.get('tool', '')}`" if e.get("call") is not None else f"source [{e.get('source')}]"
+    return f"{where}: \"{_md(e.get('quote') or e.get('excerpt') or '')[:300]}\""
+
+
 def _agent_section(patch: Patch) -> list[str]:
     res = getattr(patch, "agent", None)
     if not res:
         return []
-    from .agent import COMMANDS, PHASE_TITLE, PHASES
-    aws = [s for s in res.steps if s.ok and COMMANDS.get(s.tool, {}).get("aws")]
-    lines = ["## How the agent worked", "",
-             f"The pipefix agent (`{_md(res.model)}`) ran the five required steps itself: it chose and made "
-             f"{len(aws)} read-only AWS calls, read the pipeline repo, researched the docs, compared candidate "
-             "solutions, implemented the chosen one and opened this MR. pipefix enforced the order, the allowed "
-             "commands of each step, the evidence checks and the config checks"
+    from .agent import AGENTS, PHASE_TITLE, PHASES
+    aws = [s for s in res.steps if s.ok and s.tool == "aws_call"]
+    rounds = res.review.get("rounds", [])
+    lines = ["## How the agents worked", "",
+             f"Three pipefix agents (`{_md(res.model)}`) worked on this. The primary agent chose and made its own "
+             f"read-only AWS calls ({len(aws)} in total across agents, found from the AWS API reference), read the "
+             "pipeline repo, researched the docs, compared candidate solutions and proposed one. Two independent "
+             f"experts ({', '.join(v for k, v in AGENTS.items() if k != 'primary')}) fact-checked it with their own "
+             f"calls and reading" + (f" over {len(rounds)} round(s) until both agreed" if res.review.get("agreed") else "")
+             + ". pipefix enforced the steps, the read-only access, the verbatim evidence checks and the config checks"
              + (f" (it refused {res.refused} call(s) that broke a rule)" if res.refused else "") + ".", ""]
     d = res.diagnosis
     if d:
         lines += [f"**1. Debug.** {_md(d.get('root_cause', ''))}", ""]
-        lines += [f"- call #{e['call']} `{e['tool']}`: \"{_md(e['excerpt'][:300])}\"" for e in d.get("evidence", [])]
+        lines += [f"- {_ev(e)}" for e in d.get("evidence", [])]
         lines.append("")
     if res.candidates:
         lines += ["**2. Research: candidate solutions**", "", "| | Candidate | Settings | Checks |", "|---|---|---|---|"]
@@ -72,24 +80,39 @@ def _agent_section(patch: Patch) -> list[str]:
             lines.append(f"| {mark} | {_md(c['title'])} | {sets} | "
                          f"{'passed' if c['valid'] else _md('failed: ' + '; '.join(c['problems'])[:200])} |")
         lines.append("")
+        chosen = next((c for c in res.candidates if c["id"] == res.decision.get("chosen")), None)
+        for k, dv in (chosen or {}).get("derivations", {}).items():
+            lines.append(f"- `{k}` = `{_md(dv['formula'])}` with "
+                         + "; ".join(f"{n} = {i['value']:g} from {_ev(i)}" for n, i in dv["inputs"].items()))
+        lines.append("")
     if res.decision:
-        votes = res.decision.get("votes")
-        lines += [f"**3. Decision.** {_md(res.decision['reasons'])}"
-                  + (f" (independent votes: {', '.join(f'{k} {v}' for k, v in votes.items())}"
-                     + ("; no majority, flagged unstable" if res.decision.get("unstable") else "") + ")" if votes else ""), ""]
+        lines += [f"**3. Decision.** {_md(res.decision['reasons'])}", ""]
         lines += [f"- Not {_md(k)}: {_md(v)}" for k, v in res.decision.get("why_not", {}).items()]
         if res.decision.get("risks"):
             lines.append(f"- Risks: {_md(res.decision['risks'])}")
         lines.append("")
+    if rounds:
+        lines += ["**3b. Expert review.** " + ("Both experts agreed." if res.review.get("agreed") else
+                                               "The experts did not agree."), ""]
+        for r in rounds:
+            for who, v in r["reviews"].items():
+                lines.append(f"- Round {r['round']}, {_md(v['title'])}: **{v['verdict']}**")
+                for ch in v["checks"]:
+                    lines.append(f"  - {ch['finding']}: {_md(ch['claim'])[:200]} — {_md(ch['explanation'])[:300]}"
+                                 + "".join(f" ({_ev(e)})" for e in ch["evidence"][:2]))
+            if r.get("response"):
+                lines.append(f"- Primary {r['response']['action']}d: "
+                             + "; ".join(_md(a['answer'])[:200] for a in r["response"]["answers"][:4]))
+        lines.append("")
     if res.implement_summary:
         lines += [f"**4. Implementation.** {_md(res.implement_summary)}", ""]
-    lines += ["<details><summary>Every step the agent took</summary>", ""]
+    lines += ["<details><summary>Every step the agents took</summary>", ""]
     for p in PHASES:
         steps = [s for s in res.steps if s.phase == p]
         if steps:
             lines.append(f"*{PHASE_TITLE[p]}*")
-            lines += [f"- #{s.n} {'' if s.ok else '(refused) '}{_md(s.summary)}"
-                      + (f" — *{_md(s.reason)}*" if getattr(s, "reason", "") else "") for s in steps]
+            lines += [f"- #{s.n} [{AGENTS.get(s.agent, s.agent)}] {'' if s.ok else '(refused) '}{_md(s.summary)}"
+                      + (f" — *{_md(s.reason)}*" if s.reason else "") for s in steps]
     return lines + ["", "</details>", ""]
 
 

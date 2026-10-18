@@ -216,7 +216,7 @@ def _run_agent(job: dict, req: dict, clients, repo: Path, goal: dict) -> None:
     job["trace"] = []
     agent = Agent(clients, repo if has_repo else None, goal, allow_mr=allow_mr, on_step=step,
                   on_event=job["trace"].append, mr_opener=lambda res: open_mr(repo, res, draft=not req.get("ready")))
-    _stage(job, "Agent starting: 1. Debug, 2. Research, 3. Pick, 4. Implement, 5. Merge request")
+    _stage(job, "Agents starting: 1. Debug, 2. Research, 3. Pick, 3b. Expert review, 4. Implement, 5. Merge request")
     res = agent.run()
     patch = res.patch
     if patch is not None:
