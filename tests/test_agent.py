@@ -571,7 +571,8 @@ def test_an_agreed_non_config_answer_stops_cleanly(repo):
 
 def test_tools_are_phase_scoped_with_one_finish_each():
     for p in ("debug", "research", "decide", "review", "respond", "implement", "mr"):
-        assert sum(1 for c in COMMANDS.values() if p in c["phases"] and c.get("finish")) == 1, p
+        n = sum(1 for c in COMMANDS.values() if p in c["phases"] and c.get("finish"))
+        assert n == (2 if p == "decide" else 1), p             # decide may also reopen research
     assert _in_phase("aws_call", "review") and not _in_phase("aws_call", "decide")
     assert not _in_phase("inspect_call", "debug")
     assert not any(n.startswith(("omics_", "logs_", "facts_")) for n in COMMANDS)   # nothing pre-wired
@@ -606,3 +607,41 @@ def test_benchmark_cases_build_and_score(tmp_path):
     assert not r["value"] and not r["justified"]                 # time is not allowed for this case
     ok.review = {"rounds": [{}], "agreed": False}
     assert not score(CASES[0], ok)["decision"]                   # no agreement, no pass
+
+
+def test_page_focus_finds_the_sentence_asked_for():
+    from pipefix.agent import _focus
+    page = ("HealthOmics memory HealthOmics memory intro. " * 60 + "HealthOmics reserves a small amount of memory (5%) "
+            "for management and logging agents. " + "Other text about instances. " * 60)
+    assert "reserves a small amount of memory (5%)" in _focus(page, "reserves a small amount of memory 5%")
+    assert _focus(page, "zzz qqq") == ""
+
+
+def test_repeating_an_identical_call_is_refused(repo):
+    turns = script()
+    turns.insert(2, [aws("omics", "GetRun", {"id": "5472488"}, "read the run again")])
+    res, _, _ = run_agent(repo, turns=turns)
+    assert "already made this exact call (#2)" in res.steps[2].output
+
+
+def test_decide_can_reopen_research_once(repo):
+    turns = script()
+    i = turn_of(turns, "finish_decision")
+    turns[i:i] = [[R("reopen_research", {"why": "candidate A needs a better quote"})],
+                  [R("finish_research", {"candidates": GOOD_CANDIDATES})]]
+    res, _, _ = run_agent(repo, turns=turns)
+    assert res.decision["chosen"] == "A" and res.review["rounds"] is not None   # reached the review
+    assert [e["text"] for e in res.trace if e["kind"] == "phase"].count("2. Research solutions") == 2
+
+
+def test_out_of_memory_without_a_config_candidate_needs_a_proven_reason(repo):
+    only_b = [GOOD_CANDIDATES[1], {**GOOD_CANDIDATES[1], "id": "C", "title": "rewrite the tool"}]
+    res, _, _ = run_agent(repo, turns=with_research(only_b, tries=4))
+    assert "usually fixable by config" in first(res, "finish_research").output
+    turns = with_research(only_b)
+    i = turn_of(turns, "finish_research")
+    turns[i] = [R("finish_research", {"candidates": only_b, "no_config_reason": {
+        "reason": "the docs say allocations are hard limits and the tool must change", "evidence": [
+            {"source": 1, "quote": Q_MEM}]}})]
+    res, _, _ = run_agent(repo, turns=turns)
+    assert first(res, "finish_research").ok and res.diagnosis["no_config_reason"]["evidence"]

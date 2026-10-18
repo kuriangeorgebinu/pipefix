@@ -158,7 +158,10 @@ COMMANDS: dict[str, dict] = {
     "finish_research": {"phases": ("research",), "finish": True,
                         "desc": "End step 2 with 2-4 candidate solutions. Numbers need a derivation pipefix "
                                 "recomputes; other settings need a verbatim quote from a page that was read.",
-                        "params": {"candidates": CANDIDATES}, "required": ["candidates"]},
+                        "params": {"candidates": CANDIDATES,
+                                   "no_config_reason": _p("object", "ONLY if no config change can fix this failure: "
+                                                          "{reason, evidence: [{call|source, quote}]}")},
+                        "required": ["candidates"]},
     "finish_decision": {"phases": ("decide",), "finish": True,
                         "desc": "Pick the best candidate. Explain why it wins and why each other candidate lost.",
                         "params": DECISION, "required": ["chosen", "reasons", "why_not"]},
@@ -187,6 +190,9 @@ COMMANDS: dict[str, dict] = {
                                            "evidence": EVIDENCE}, "required": ["question", "answer"]}),
                                    "candidates": CANDIDATES, **DECISION},
                         "required": ["action", "answers"]},
+    "reopen_research": {"phases": ("decide",), "finish": True,
+                        "desc": "Use ONLY if none of the valid candidates is right: go back to step 2 (once).",
+                        "params": {"why": _p("string", "what research must fix")}, "required": ["why"]},
     "implement_apply": {"phases": ("implement",),
                         "desc": "Apply the agreed solution to the pipeline config. Returns the diff, or the problems.",
                         "params": {}, "required": []},
@@ -503,6 +509,25 @@ def _shape(shape, depth: int = 0) -> dict:
     return out
 
 
+def _focus(text: str, focus: str, width: int = 700, keep: int = 6) -> str:
+    """The parts of a page that best match the words asked for (the exact phrase first, then the most words)."""
+    words = {w.lower() for w in re.findall(r"[\w.%-]{3,}", focus)}
+    if not words:
+        return ""
+    low, phrase = text.lower(), " ".join(focus.lower().split())
+    flat = " ".join(low.split())
+    wins = []
+    for start in range(0, max(1, len(text) - width // 2), width // 2):
+        chunk = low[start:start + width]
+        score = sum(1 for w in words if w in chunk) + (len(words) if phrase in " ".join(chunk.split()) else 0)
+        if score:
+            wins.append((score, start))
+    if not wins and phrase not in flat:
+        return ""
+    best = sorted(sorted(wins, reverse=True)[:keep], key=lambda x: x[1])
+    return " ... ".join(text[st:st + width] for _, st in best)[:6000]
+
+
 def _readable(out):
     """Replace streaming bodies by their text (task files are small; reads are ranged)."""
     if isinstance(out, dict):
@@ -541,6 +566,8 @@ class Agent:
         self.transcripts: dict[str, list] = {}
         self._review = self._response = None
         self._questions: list[str] = []
+        self._seen: dict[tuple, int] = {}
+        self._reopened = False
         platform = "healthomics" if goal.get("omics_run") else "aws-batch"
         ref = f"HealthOmics run {goal['omics_run']}" if goal.get("omics_run") else \
             f"Batch {'queue ' + goal['batch_queue'] if goal.get('batch_queue') else 'jobs'}"
@@ -776,9 +803,7 @@ class Agent:
             text = src["text"]
             focus = str(args.get("focus") or "").strip()
             if focus:   # the passages around the words asked for
-                words = [w for w in re.findall(r"[\w.%-]{3,}", focus)][:6]
-                spots = sorted({m.start() for w in words for m in re.finditer(re.escape(w), text, re.I)})[:12]
-                passages = " ... ".join(text[max(0, i - 300):i + 500] for i in spots)[:6000] or excerpt(text)
+                passages = _focus(text, focus) or excerpt(text)
             else:
                 passages = excerpt(text)
             return {"cite_as_source": n, "title": src["title"], "url": src["url"], "passages": passages}
@@ -891,7 +916,8 @@ class Agent:
                 policies += 1
                 if policies > 1 or not 1.0 <= val <= 1.5:
                     return (f"input {name}: only one policy input is allowed, a safety headroom factor between 1.0 "
-                            "and 1.5; every other input is a fact and needs a quote"), {}
+                            "and 1.5 (fold any allowance for overhead into it); every other input is a fact and needs "
+                            "a quote from evidence. A number you cannot quote is a guess"), {}
                 names[str(name)] = val
                 traced[str(name)] = {"value": val, "policy": redact(str(inp["policy"]))[:200]}
                 continue
@@ -995,7 +1021,20 @@ class Agent:
             problems.append("give at least 2 genuinely different candidates")
         if not any(c["valid"] for c in cands):
             problems.append("no candidate passed every check")
-        if len(cands) < 2 or not any(c["valid"] for c in cands):
+        fixable = FailureClass(self.res.diagnosis["failure_class"]).auto_fixable
+        ncr = a.get("no_config_reason") if isinstance(a.get("no_config_reason"), dict) else None
+        if fixable and not any(c["valid"] and c["settings"] for c in cands):
+            good, bad = self._verify((ncr or {}).get("evidence"))
+            if not ncr or not good or len(str(ncr.get("reason", "")).strip()) < 30:
+                problems.append(f"a {self.res.diagnosis['failure_class']} failure is usually fixable by config, so at "
+                                "least one candidate must change settings and pass every check (fix the problems "
+                                "above), or give no_config_reason with verified evidence that config cannot fix it"
+                                + (f" ({bad[0]})" if bad else ""))
+            else:
+                self.res.diagnosis["no_config_reason"] = {"reason": redact(str(ncr["reason"]))[:1500], "evidence": good}
+        if len(cands) < 2 or not any(c["valid"] for c in cands) or (
+                fixable and not any(c["valid"] and c["settings"] for c in cands)
+                and "no_config_reason" not in self.res.diagnosis):
             extra = [f"candidate {c['id']} notes: " + "; ".join(c["notes"]) for c in cands if c["notes"]]
             raise _Refused(" | ".join(problems + extra))
         self.res.candidates = cands
@@ -1044,7 +1083,9 @@ class Agent:
         if chosen not in ids:
             raise _Refused(f"chosen must be one of {list(ids)}")
         if not ids[chosen]["valid"]:
-            raise _Refused(f"candidate {chosen} failed the checks: {ids[chosen]['problems']}")
+            valid = [i for i, c in ids.items() if c["valid"]]
+            raise _Refused(f"candidate {chosen} failed the checks: {ids[chosen]['problems']}. Valid candidates: "
+                           f"{valid}. If none of them is right, call reopen_research")
         why_not = {str(k): str(v) for k, v in (a.get("why_not") or {}).items()}
         missing = [i for i in ids if i != chosen and not why_not.get(i, "").strip()]
         if missing:
@@ -1304,6 +1345,12 @@ class Agent:
             return self._finish_research(args), True
         elif name == "finish_decision":
             return self._finish_decision(args), True
+        elif name == "reopen_research":
+            if self._reopened:
+                raise _Refused("research was already reopened once; choose a valid candidate")
+            self._reopened = True
+            self.res.candidates, self.res.decision = [], {}
+            return "Research reopened: go back to step 2.", True
         elif name == "finish_review":
             return self._finish_review(args), True
         elif name == "finish_response":
@@ -1365,9 +1412,13 @@ class Agent:
                 sj = json.dumps(shown, default=str)
                 self._event("call", reason or "(no reason given)", phase=phase, tool=name, n=self.n,
                             args=json.loads(redact(sj)) if len(sj) < 1500 else {"...": "large"})
+                key = (self.who, name, json.dumps(args, sort_keys=True, default=str))
                 try:
                     if len(reason) < 8:
                         raise _Refused("every call needs a 'reason': say why you are making it")
+                    if not COMMANDS.get(name, {}).get("finish") and key in self._seen:
+                        raise _Refused(f"you already made this exact call (#{self._seen[key]}); its output will not "
+                                       "change. Use that output, or ask for something different")
                     text, finished = self._run_tool(toolset, name, args)
                     ok = True
                 except _Refused as e:
@@ -1380,6 +1431,8 @@ class Agent:
                 except Exception as e:  # a failed command is reported to the agent, not fatal
                     text, finished, ok = f"ERROR: {type(e).__name__}: {redact(str(e))[:400]}", False, False
                 self.outputs[self.n] = text if ok else ""
+                if ok and not COMMANDS.get(name, {}).get("finish"):
+                    self._seen.setdefault(key, self.n)
                 self._record(phase, name, args, ok, self._summary(name, args, text, ok), text[:4000], reason)
                 self._event("result", text[:1500], phase=phase, tool=name, n=self.n, ok=ok,
                             full=len(text) if len(text) > 1500 else None)
@@ -1408,7 +1461,9 @@ class Agent:
                                                                      else "none")}]
         self.transcripts["primary"] = messages
         try:
-            for phase in PHASES:
+            queue = list(PHASES)
+            while queue:
+                phase = queue.pop(0)
                 self.res.phase_reached = phase
                 self.who = "primary"
                 self._event("phase", PHASE_TITLE[phase], phase=phase)
@@ -1422,6 +1477,8 @@ class Agent:
                     continue
                 messages.append({"role": "user", "content": PHASE_BRIEF[phase]})
                 self._loop(messages, phase, BUDGET[phase])
+                if phase == "decide" and not self.res.decision:      # reopened
+                    queue[:0] = ["research", "decide"]
         except _Stop as e:
             self.res.error = str(e)
             if not self.res.ai and self.res.candidates and self.res.decision:
