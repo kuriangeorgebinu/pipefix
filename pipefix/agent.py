@@ -589,12 +589,19 @@ class Agent:
             problems.append("give at least 2 genuinely different candidates")
         if not any(c["valid"] for c in cands):
             problems.append("no candidate passed every check")
-        if len(cands) < 2 or not any(c["valid"] for c in cands):
+        fixable = FailureClass(self.res.diagnosis["failure_class"]).auto_fixable
+        if fixable and not any(c["valid"] and c["settings"] for c in cands):
+            problems.append(f"a {self.res.diagnosis['failure_class']} failure is fixable by config, so at least one "
+                            "candidate must change settings and pass every check; fix the problems above "
+                            "(remove settings you cannot support with a quote about them)")
+        if len(cands) < 2 or not any(c["valid"] for c in cands) or (fixable and not any(c["valid"] and c["settings"]
+                                                                                        for c in cands)):
             extra = [f"candidate {c['id']} notes: " + "; ".join(c["notes"]) for c in cands if c["notes"]]
             raise _Refused(" | ".join(problems + extra))
         self.res.candidates = cands
-        bad = [c["id"] for c in cands if not c["valid"]]
-        return "Research accepted." + (f" Candidates {bad} failed checks and cannot be chosen." if bad else "")
+        bad = [c for c in cands if not c["valid"]]
+        return "Research accepted." + ("".join(f" Candidate {c['id']} failed checks and cannot be chosen: "
+                                               f"{'; '.join(c['problems'])}." for c in bad))
 
     def _finish_decision(self, a: dict) -> str:
         ids = {c["id"]: c for c in self.res.candidates}

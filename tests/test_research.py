@@ -122,6 +122,7 @@ def test_ai_fix_is_researched_checked_cited_and_written(repo, failure, ai_keys):
     ({"memory": "{ 64.GB * task.attempt }"}, "more than the largest instance"),
     ({"errorStrategy": "{ task.exitStatus in (130..145) ? 'retry' : 'finish' }"}, "doesn't retry the exit code"),
     ({"errorStrategy": "{ System.exit(1) }"}, "accepted form"),
+    ({"errorStrategy": "{ task.exitStatus in 1..255 ? 'retry' : 'finish' }"}, "at most 32"),     # retry everything
     ({"queue": "'spot'"}, "HealthOmics has no Batch queues"),
     ({"container": "'evil:latest'"}, "not a setting"),
 ])

@@ -192,19 +192,34 @@ def test_research_must_be_grounded_and_decision_must_pick_a_valid_candidate(repo
     bad = json.loads(json.dumps(GOOD_CANDIDATES))
     bad[0]["evidence"][0]["quote"] = "Always give sort tasks sixteen gigabytes of memory."       # not in the page
     bad[0]["settings"]["memory"] = "{ 'rm -rf /'.execute(); 15.GB }"                             # code injection
-    turns[i:i] = [[("finish_research", {"candidates": bad[:1]})],                                # 1 candidate, invalid
-                  [("finish_research", {"candidates": bad})]]                                    # A invalid, B valid: accepted
-    turns[i + 3] = [("finish_decision", {"chosen": "A", "reasons": "x" * 50, "why_not": {"B": "y"}})]  # A failed checks
-    turns.insert(i + 4, [("finish_decision", {"chosen": "B", "reasons": "B is the only candidate that passed every "
-                                                                        "check, so it is the best available.",
-                                               "why_not": {"A": "failed the checks"}})])
+    c = json.loads(json.dumps(GOOD_CANDIDATES[0]))
+    c["id"], c["settings"]["memory"] = "C", "{ 16.GB * task.attempt }"
+    turns[i:i + 2] = [[("finish_research", {"candidates": bad[:1]})],                            # 1 candidate, invalid
+                      [("finish_research", {"candidates": bad})],                                # no valid config fix
+                      [("finish_research", {"candidates": bad + [c]})],                          # C valid: accepted
+                      [("finish_decision", {"chosen": "A", "reasons": "x" * 50, "why_not": {"B": "y", "C": "z"}})],
+                      [("finish_decision", {"chosen": "C", "reasons": "C sizes memory to the buffer and is the only "
+                                                                      "config candidate that passed every check.",
+                                             "why_not": {"A": "failed the checks", "B": "changes the tool"}})]]
     res, _, _ = run_agent(repo, turns=turns)
-    msgs = [s.summary for s in res.steps if not s.ok]
+    msgs = [s.output for s in res.steps if not s.ok]
     assert any("give at least 2" in m for m in msgs)
+    assert any("fixable by config" in m for m in msgs)
     assert any("candidate A failed the checks" in m for m in msgs)
-    assert res.decision.get("chosen") == "B"
-    assert "not a pipeline config change" in res.error             # B has no config change: stops before the MR
-    assert res.patch is None
+    assert res.done and res.decision["chosen"] == "C"
+    assert "16.GB" in res.patch.files["conf/pipefix.config"][1]
+
+
+def test_a_non_config_choice_stops_cleanly_for_failures_config_cannot_fix(repo):
+    turns = script()
+    k = next(j for j, t in enumerate(turns) if t[0][0] == "finish_debug" and "tag" in t[0][1])
+    turns[k][0][1]["failure_class"] = "container_error"                    # not fixable by config
+    i = next(j for j, t in enumerate(turns) if t[0][0] == "finish_decision")
+    turns[i] = [("finish_decision", {"chosen": "B", "reasons": "For a container error the image must be fixed; no "
+                                                               "config change helps here.",
+                                     "why_not": {"A": "memory is not the problem"}})]
+    res, _, _ = run_agent(repo, turns=turns)
+    assert "not a pipeline config change" in res.error and res.patch is None
 
 
 def test_command_dictionary_is_read_only_and_phase_scoped():
@@ -263,3 +278,17 @@ def test_quotes_must_be_about_the_setting_and_no_op_settings_are_dropped(repo):
     assert any("not used" in n for n in ca["notes"])
     assert [e["setting"] for e in ca["evidence"]] == ["memory", "memory, maxRetries"]
     assert not cc["valid"] and "memory has no verified quote about memory" in cc["problems"][0]
+
+
+def test_a_config_fixable_failure_needs_a_valid_config_candidate(repo):
+    turns = script()
+    i = next(k for k, t in enumerate(turns) if t[0][0] == "finish_research")
+    a = json.loads(json.dumps(GOOD_CANDIDATES[0]))
+    a["settings"]["time"] = "{ 2.h * task.attempt }"                 # no quote about time: A fails
+    turns[i:i + 1] = [[("finish_research", {"candidates": [a, GOOD_CANDIDATES[1]]})],   # only B (no config) valid
+                      [("finish_research", {"candidates": GOOD_CANDIDATES})]]          # fixed
+    res, _, _ = run_agent(repo, turns=turns)
+    first = next(s for s in res.steps if s.tool == "finish_research")
+    assert not first.ok and "time has no verified quote about time" in first.output
+    assert "fixable by config" in first.output
+    assert res.done and res.decision["chosen"] == "A"

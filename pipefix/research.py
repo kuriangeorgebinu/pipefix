@@ -303,6 +303,9 @@ def check(name: str, directive: str, value: str, ctx: dict) -> str | None:
         codes = exit_codes(m.group(1)) if m else None
         if codes is None:
             return f"errorStrategy `{v}` is not in the accepted form (it would run as code, so it must match exactly)"
+        if len(codes) > 32:
+            return f"errorStrategy retries {len(codes)} exit codes; a retry rule may cover at most 32 (retrying every " \
+                   "failure hides real bugs and multiplies cost)"
         if task.get("exit_code") is not None and m.group(2) == "retry" and task["exit_code"] not in codes:
             return f"errorStrategy doesn't retry the exit code the task failed with ({task['exit_code']})"
     elif directive == "queue":
