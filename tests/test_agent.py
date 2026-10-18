@@ -418,3 +418,17 @@ def test_benchmark_cases_build_and_score(tmp_path):
     bad.patch = object()
     r = score(CASES[0], bad)
     assert not r["value"] and not r["justified"]
+
+
+def test_a_candidate_whose_settings_are_all_no_ops_is_refused(repo):
+    turns = script()
+    i = research_turn(turns)
+    noop = {"id": "C", "title": "only widen the retry rule", "process": "SORT_READS", "rationale": "r",
+            "settings": {"errorStrategy": "{ task.exitStatus in ((130..145) + 104) ? 'retry' : 'finish' }"},
+            "evidence": [{"source": 2, "quote": Q_ES}]}
+    turns[i] = [R("finish_research", {"candidates": GOOD_CANDIDATES + [noop]})]
+    turns[i + 1] = [R("finish_decision", {**DECISION_A, "why_not": {"B": "changes the tool", "C": "changes nothing"}})]
+    res, _, _ = run_agent(repo, turns=turns)
+    c = res.candidates[2]
+    assert not c["valid"] and "changes nothing it claims to" in c["problems"][0] and c["declared"] == 1
+    assert res.candidates[1]["declared"] == 0 and res.candidates[1]["valid"]

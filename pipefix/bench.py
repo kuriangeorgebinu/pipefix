@@ -145,7 +145,8 @@ def score(c: Case, res) -> dict:
     if e["kind"] == "no_config":
         out["value"] = None
         out["justified"] = not settings
-        out["decision"] = res.patch is None and not settings and "not a pipeline config change" in res.error
+        out["decision"] = (res.patch is None and not settings and chosen is not None and chosen.get("declared") == 0
+                           and "not a pipeline config change" in res.error)
         return out
     mem = first_number("memory", settings.get("memory", "")) if "memory" in settings else None
     lo, hi = e["memory"]

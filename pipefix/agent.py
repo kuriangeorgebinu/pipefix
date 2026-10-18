@@ -681,7 +681,8 @@ class Agent:
             # settings: strip selector prefixes, drop values identical to what is in effect now
             tr = self.cfg.trace(proc) if self.cfg and proc in self.cfg.processes else None
             settings = {}
-            for k, v in (c.get("settings") or {}).items():
+            declared = dict(c.get("settings") or {})
+            for k, v in declared.items():
                 m = re.search(r"(memory|time|cpus|errorStrategy|maxRetries|queue|disk)\s*$", str(k))
                 key, val = (m.group(1) if m else str(k).strip()), str(v).strip()
                 cur = tr.effective(key) if tr else None
@@ -734,6 +735,9 @@ class Agent:
             for e in evid:   # a quote may support several settings; one that supports none is only context
                 e["setting"] = ", ".join(e.pop("supports", [])) or "context"
             cp += self._playbook(proc, settings)
+            if declared and not settings:
+                cp.append("every setting it proposes is already in effect, so it changes nothing it claims to; a "
+                          "'no config change' answer must say so (settings {}) and explain why")
             if not evid and not derived:
                 cp.append("no verified quote or derivation at all")
             if cp:
@@ -742,6 +746,7 @@ class Agent:
                           "settings": settings, "rationale": redact(str(c.get("rationale", "")))[:1500],
                           "pros": redact(str(c.get("pros", "")))[:400], "cons": redact(str(c.get("cons", "")))[:400],
                           "evidence": evid, "derivations": derived, "valid": not cp, "problems": cp,
+                          "declared": len(declared),
                           "notes": notes + self._landing(proc, settings)})
         if len(cands) < 2:
             problems.append("give at least 2 genuinely different candidates")
