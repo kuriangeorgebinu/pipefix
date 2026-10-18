@@ -45,7 +45,7 @@ PHASE_TITLE = {"debug": "1. Debug", "research": "2. Research solutions", "decide
                "review": "3b. Expert review", "implement": "4. Implement it", "mr": "5. Open the merge request"}
 BUDGET = {"debug": 32, "research": 24, "decide": 3, "review": 18, "respond": 14, "implement": 4, "mr": 3}
 NUMERIC = ("memory", "time", "cpus", "disk")          # settings whose value must be derived
-MAX_FINISH_TRIES = 4
+MAX_FINISH_TRIES = 6
 MAX_ROUNDS = 3
 OUT_CHARS = 7000
 S3_TASK_FILE = re.compile(r"(^|/)\.(command\.(run|sh|log|err|out|trace|begin)|exitcode)$")
