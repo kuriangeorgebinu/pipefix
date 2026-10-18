@@ -345,13 +345,18 @@ class Handler(BaseHTTPRequestHandler):
         self._json(404, {"error": "Not found."})
 
     def do_POST(self):
+        # read the body first, even for requests we refuse: replying early makes Windows reset the connection
+        try:
+            n = min(int(self.headers.get("Content-Length") or 0), 1_000_000)
+        except ValueError:
+            n = 0
+        raw = self.rfile.read(n) if n else b""
         if not self._host_ok():
             return self._json(403, {"error": "pipefix only answers on localhost"})
         if not secrets.compare_digest(self.headers.get("X-Pipefix-Token", ""), TOKEN):
             return self._json(403, {"error": "Missing or wrong session token. Reload the page."})
         try:
-            n = int(self.headers.get("Content-Length") or 0)
-            req = json.loads(self.rfile.read(n) or b"{}")
+            req = json.loads(raw or b"{}")
         except ValueError:
             return self._json(400, {"error": "Invalid JSON."})
         u = urlparse(self.path)
