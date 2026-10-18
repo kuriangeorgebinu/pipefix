@@ -100,6 +100,8 @@ CANDIDATES = _p("array", "candidate solutions", items={
 DECISION = {"lands_on": _p("object", "HealthOmics memory/cpus change only: {instance: 'omics.x.y', source: n} - the "
                                      "instance the chosen request lands on, from the instance table page you read"),
             "chosen": _p("string", "candidate id"),
+            "rationale": _p("string", "optional: corrected rationale for the chosen candidate, if its original text "
+                                      "is no longer true (e.g. it names a different instance)"),
             "reasons": _p("string", "why this one is best for THIS failure, against the evidence"),
             "why_not": _p("object", "candidate id -> why it lost (every other candidate)"),
             "risks": _p("string", "what could still go wrong")}
@@ -237,7 +239,7 @@ HARD RULES (breaking one gets your call refused):
   reserve) are inputs quoted from the docs; any headroom or margin you add is also an input you must back with
   evidence (a docs recommendation or something measured in this run). The formula may only use the literal
   constants 0, 1, 100, 1000 and 1024 (unit conversions); every other number is an input. Rows of a docs table can
-  be quoted as they appear.
+  be quoted as they appear. Evidence must be about the platform and tool in use (not another service's defaults).
 - Out of memory: measure what the tool's own command needs (its flags, threads x per-thread memory, heap,
   buffers), decide how much headroom it needs and justify that from evidence (too little fails again,
   too much moves the task to a bigger, costlier instance), account for any memory the platform keeps for itself
@@ -268,6 +270,8 @@ How to review:
   instance than the evidence requires, settings changed without justification, a retry of a deterministic error.
 - To confirm which instance a request lands on, quote a row from every instance family the docs list, not one
   family. Do not read a recommended headroom as the platform reserve (or the reverse): they are separate.
+- A quote only grounds a number if it is about the platform and tool actually in use: a default from another
+  service's docs (e.g. an EC2 rightsizing tool) is not evidence for this task's memory. Mark it 'wrong'.
 - If you think the margin is wrong, say what it should be and back that with evidence too; a demand without
   evidence is not a valid objection.
 - Check the root cause (covers 'root_cause') and EVERY setting the chosen candidate changes (covers = that
@@ -1182,10 +1186,15 @@ class Agent:
             raise _Refused(f"say why each other candidate lost; missing: {missing}")
         if len(str(a.get("reasons", "")).strip()) < 40:
             raise _Refused("reasons are too thin; compare against the evidence")
-        texts = [str(a.get("reasons", "")), str(a.get("risks", "")), *why_not.values()]
-        problems = self._landing_problems(ids[chosen], a.get("lands_on"), texts) + self._citation_problems(texts)
+        c = ids[chosen]
+        rationale = str(a.get("rationale") or "").strip() or c["rationale"]
+        texts = [str(a.get("reasons", "")), str(a.get("risks", "")), *why_not.values(), c["title"], rationale]
+        problems = self._landing_problems(c, a.get("lands_on"), texts) + self._citation_problems(texts)
+        problems += self._stale_landing(c, a.get("lands_on"), [c["title"], rationale])
         if problems:
             raise _Refused("; ".join(problems))
+        if a.get("rationale"):
+            c["rationale"] = redact(rationale)[:3000]
         out = {"chosen": chosen, "reasons": redact(str(a["reasons"]))[:3000],
                "why_not": {k: redact(v)[:1000] for k, v in why_not.items()},
                "risks": redact(str(a.get("risks", "")))[:1200]}
@@ -1239,6 +1248,21 @@ class Agent:
                                    f"({rows[inst][0]:g} vCPU / {rows[inst][1]:g} GiB on source {src['n']}); say what is "
                                    "actually true (e.g. it has more vCPUs than needed)")
         return out
+
+    @staticmethod
+    def _stale_landing(c: dict, lands_on, texts: list[str]) -> list[str]:
+        """The chosen candidate's own title/rationale must not say it lands somewhere else than lands_on."""
+        if not isinstance(lands_on, dict) or not lands_on.get("instance"):
+            return []
+        target = str(lands_on["instance"]).lower()
+        out = []
+        for t in texts:
+            for m in re.finditer(r"(lands?|landing|places?|placed|allocat\w*|runs? on|moves? (?:it |the task )?to)"
+                                 r"[^.;]{0,40}?(" + INSTANCE + ")", t or "", re.I):
+                if m.group(2).lower() != target:
+                    out.append(f"candidate {c['id']}'s text still says it lands on {m.group(2)}, but lands_on is "
+                               f"{target}; pass the corrected 'rationale' (and keep the title true)")
+        return out[:3]
 
     def _citation_problems(self, texts: list[str]) -> list[str]:
         """Inline citations in prose ({source: n, quote: "..."} or "..." (source n)) must be verbatim in that source."""

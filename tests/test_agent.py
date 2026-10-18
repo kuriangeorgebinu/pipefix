@@ -774,3 +774,17 @@ def test_a_reviewer_landing_claim_under_other_still_needs_every_family(repo):
     res, _, _ = run_agent(repo, turns=turns, aws_doc=DOC_TWO_FAMILIES)
     st = next(s for s in res.steps if s.tool == "finish_review")
     assert not st.ok and "where the request lands (other)" in st.output, st.output
+
+
+def test_a_stale_landing_claim_in_the_chosen_rationale_must_be_corrected(repo):
+    a = {**GOOD_CANDIDATES[0], "rationale": "12 GiB + headroom; lands on omics.m.xlarge",
+         "evidence": GOOD_CANDIDATES[0]["evidence"] + [{"source": 1, "quote": "omics.m.xlarge 4 16 GiB"},
+                                                      {"source": 1, "quote": "omics.r.large 2 16 GiB"}]}
+    turns = with_research([a, GOOD_CANDIDATES[1]])
+    turns = _decide(turns)                                                  # same decision, stale rationale
+    i = turn_of(turns, "finish_decision", 1)
+    turns[i] = [R("finish_decision", {**DECISION_A, "rationale": "12 GiB + headroom; lands on omics.r.large"})]
+    res, _, _ = run_agent(repo, turns=turns, aws_doc=DOC_TWO_FAMILIES)
+    outs = [s.output for s in res.steps if s.tool == "finish_decision" and not s.ok]
+    assert "still says it lands on omics.m.xlarge" in outs[0]
+    assert res.candidates[0]["rationale"].endswith("omics.r.large")
