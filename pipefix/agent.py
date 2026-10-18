@@ -383,7 +383,8 @@ def _shows(quote: str, val: float) -> bool:
     """The quote shows this number (12 in '12 GB', 0.05 in '5%', 30 in '-Xmx30g')."""
     q = (quote or "").replace(",", "")
     nums = [float(x) for x in re.findall(r"(?<![\d.])(\d+(?:\.\d+)?)(?!\d)", q)]
-    nums += [float(x) / 100 for x in re.findall(r"(\d+(?:\.\d+)?)\s*%", q)]
+    pct = [float(x) / 100 for x in re.findall(r"(\d+(?:\.\d+)?)\s*%", q)]
+    nums += pct + [round(1 - p, 10) for p in pct]          # 5% reserve -> 0.05, or the 0.95 that is left
     return any(abs(n - val) <= 1e-9 * max(1.0, abs(val)) for n in nums)
 
 
@@ -925,7 +926,8 @@ class Agent:
             if bad:
                 return f"input {name}: {bad[0]}", {}
             if not _shows(good[0]["quote"], val):
-                return f"input {name}={val:g}: the quote does not show that number: {good[0]['quote'][:90]!r}", {}
+                return (f"input {name}={val:g}: the quote does not show that number: {good[0]['quote'][:90]!r}. "
+                        "Use the number exactly as the quote shows it and do any conversion in the formula"), {}
             names[str(name)] = val
             traced[str(name)] = {"value": val, **{x: good[0][x] for x in ("call", "source", "url", "tool")
                                                   if good[0].get(x) is not None}, "quote": good[0]["quote"]}

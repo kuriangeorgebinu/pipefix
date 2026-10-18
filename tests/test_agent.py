@@ -225,7 +225,7 @@ def test_arithmetic_numbers_and_quotes():
     assert first_number("memory", "{ 15.GB * task.attempt }") == 15 and first_number("cpus", "4") == 4
     assert first_number("memory", "{ [16.GB * task.attempt, 30.GB].min() }") is None    # never a guess
     assert first_number("memory", "{ 2 * task.attempt }") is None
-    assert _shows("allocating a 12 GB sort buffer", 12) and _shows("reserves (5%)", 0.05) and _shows("-Xmx30g", 30)
+    assert _shows("allocating a 12 GB sort buffer", 12) and _shows("reserves (5%)", 0.05) and _shows("reserves (5%)", 0.95) and _shows("-Xmx30g", 30)
     assert not _shows("allocating a 12 GB sort buffer", 1.2) and not _shows("version 112", 12)
 
 
