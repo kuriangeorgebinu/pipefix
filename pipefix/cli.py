@@ -188,6 +188,12 @@ def main(argv: list[str] | None = None) -> int:
     s.add_argument("--env-file", action="append", help="read the AI keys from this .env file")
     s.add_argument("--transcript", help="save the agent's full (redacted) conversation as JSON")
 
+    s = sub.add_parser("bench", help="measure the agent's accuracy on recorded failures with known-correct fixes")
+    s.add_argument("--case", action="append", help="only this case id (repeatable)")
+    s.add_argument("--samples", type=int, default=3, help="independent decisions to vote on (default 3)")
+    s.add_argument("--out", help="save the scores as JSON")
+    s.add_argument("--env-file", action="append", help="read the AI keys from this .env file")
+
     s = sub.add_parser("ui", help="open the pipefix console in your browser")
     s.add_argument("--port", type=int, default=8787)
     s.add_argument("--no-browser", action="store_true")
@@ -211,6 +217,15 @@ def main(argv: list[str] | None = None) -> int:
     inv = None
     if a.cmd == "agent":
         return _agent(a)
+    if a.cmd == "bench":
+        from .bench import run_bench, summary as bench_summary
+        rows = run_bench(a.case, a.samples, on_progress=lambda r: print(
+            f"{r['case']}: value={r['value']} justified={r['justified']} decision={r['decision']} "
+            f"({r['seconds']} s, {r['calls']} calls)", flush=True))
+        print("\n" + bench_summary(rows))
+        if a.out:
+            Path(a.out).write_text(json.dumps(rows, indent=2, default=str), encoding="utf-8")
+        return 0 if all(r["decision"] and r["justified"] in (True, None) for r in rows) else 1
     if a.cmd == "investigate":
         from .aws.session import AwsUnavailable, boto3_clients
         from .investigate import investigate

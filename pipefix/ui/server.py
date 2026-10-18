@@ -20,7 +20,7 @@ import webbrowser
 from datetime import datetime
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from urllib.parse import urlparse
+from urllib.parse import parse_qs, urlparse
 
 from .. import __version__, keys, vcs
 from ..configtrace import load_repo, memory_literal_bytes
@@ -213,8 +213,9 @@ def _run_agent(job: dict, req: dict, clients, repo: Path, goal: dict) -> None:
                 s["state"] = "done"
         job["stages"].append({"name": f"{PHASE_TITLE[st.phase]} · #{st.n} {st.summary}",
                               "state": "done" if st.ok else "failed"})
+    job["trace"] = []
     agent = Agent(clients, repo if has_repo else None, goal, allow_mr=allow_mr, on_step=step,
-                  mr_opener=lambda res: open_mr(repo, res, draft=not req.get("ready")))
+                  on_event=job["trace"].append, mr_opener=lambda res: open_mr(repo, res, draft=not req.get("ready")))
     _stage(job, "Agent starting: 1. Debug, 2. Research, 3. Pick, 4. Implement, 5. Merge request")
     res = agent.run()
     patch = res.patch
@@ -336,8 +337,11 @@ class Handler(BaseHTTPRequestHandler):
             job = JOBS.get(m.group(1))
             if not job:
                 return self._json(404, {"error": "No such investigation."})
+            since = int((parse_qs(u.query).get("since") or ["0"])[0] or 0)
             return self._json(200, {k: job[k] for k in ("id", "kind", "label", "status", "stages", "result", "error")}
-                              | {"written": job.get("written"), "mr": job.get("mr")})
+                              | {"written": job.get("written"), "mr": job.get("mr"),
+                                 "trace": job["trace"][since:] if "trace" in job else None,
+                                 "trace_len": len(job.get("trace") or [])})
         self._json(404, {"error": "Not found."})
 
     def do_POST(self):

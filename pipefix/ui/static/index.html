@@ -397,6 +397,63 @@ dialog .scopes { font-size: 13.5px; margin: 8px 0 0; padding-left: 18px; }
 .steplog li.no { color: var(--T); }
 @media (max-width: 860px) { .agent-steps { grid-template-columns: 1fr 1fr; } }
 
+/* ---------- agent reasoning ---------- */
+.agentrun { max-width: 980px; padding-top: 24px; }
+.agentrun h1 { font-size: 26px; font-weight: 600; }
+.agentrun .sub { color: var(--ink-3); font-size: 13.5px; margin-top: 4px; display: flex; gap: 14px; flex-wrap: wrap; }
+.rail5 { list-style: none; display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 6px; padding: 0; margin: 20px 0 0; }
+.rail5 li { border-radius: 9px; padding: 9px 11px; background: var(--surface); border: 1px solid var(--rule); font-size: 12.5px; color: var(--ink-3); position: relative; overflow: hidden; }
+.rail5 li b { display: block; font-size: 13px; color: var(--ink-2); font-weight: 600; }
+.rail5 li.done { border-color: color-mix(in srgb, var(--A) 50%, var(--rule)); }
+.rail5 li.done b { color: var(--ink); }
+.rail5 li.done::after { content: ""; position: absolute; left: 0; top: 0; height: 3px; width: 100%; background: var(--A); }
+.rail5 li.active { border-color: var(--C); box-shadow: 0 0 0 3px var(--C-wash); }
+.rail5 li.active b { color: var(--C); }
+.rail5 li.active::after { content: ""; position: absolute; left: 0; top: 0; height: 3px; width: 40%; background: var(--C); animation: slide 1.4s ease-in-out infinite; }
+.rail5 li.stop { border-color: var(--T); }
+@keyframes slide { 0% { left: -40%; } 100% { left: 100%; } }
+.think { margin-top: 20px; border: 1px solid var(--rule); border-radius: var(--r-panel); background: var(--surface); }
+.think > header { display: flex; align-items: center; gap: 10px; padding: 12px 16px; border-bottom: 1px solid var(--rule); }
+.think > header h2 { font-size: 14px; font-weight: 600; }
+.think > header .count { margin-left: auto; color: var(--ink-3); font-size: 12px; }
+.spark { width: 18px; height: 18px; flex: none; }
+.running .spark path { animation: pulse 1.6s ease-in-out infinite; transform-origin: center; }
+@keyframes pulse { 50% { opacity: .35; } }
+.tl { max-height: 62vh; overflow-y: auto; padding: 6px 16px 14px; scroll-behavior: smooth; }
+.final .tl { max-height: 70vh; }
+.ev-phase { margin: 16px 0 6px; font-size: 11.5px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--ink-3); display: flex; align-items: center; gap: 10px; }
+.ev-phase::after { content: ""; flex: 1; height: 1px; background: var(--rule); }
+.ev { margin: 8px 0; font-size: 13.5px; line-height: 1.55; }
+.ev.thought { color: var(--ink-2); padding: 2px 0 2px 12px; border-left: 2px solid var(--rule-2); white-space: pre-wrap; }
+.ev.thought .lbl { display: block; font-size: 11px; font-weight: 600; color: var(--ink-3); letter-spacing: .04em; text-transform: uppercase; margin-bottom: 2px; }
+.ev.call { border: 1px solid var(--rule); border-radius: 10px; padding: 8px 12px; background: var(--sunk); }
+.ev.call .head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.ev.call .num { font-family: var(--mono); font-size: 11.5px; color: var(--ink-3); }
+.ev.call code.tool { font-size: 12.5px; font-weight: 500; color: var(--ink); }
+.ev.call .kind { font-size: 10.5px; font-weight: 700; letter-spacing: .05em; border-radius: 4px; padding: 1px 6px; }
+.kind.aws { background: var(--G-wash); color: var(--G); } .kind.fact { background: var(--A-wash); color: var(--A); }
+.kind.web { background: var(--C-wash); color: var(--C); } .kind.repo { background: var(--surface-2); color: var(--ink-2); }
+.kind.finish { background: var(--ink); color: var(--surface); }
+.ev.call .args { font-family: var(--mono); font-size: 11.5px; color: var(--ink-3); overflow-wrap: anywhere; }
+.ev.call .why { margin: 4px 0 0; color: var(--ink); }
+.ev.call .why b { font-weight: 600; color: var(--ink-3); font-size: 11.5px; text-transform: uppercase; letter-spacing: .04em; margin-right: 6px; }
+.ev.call details { margin-top: 6px; }
+.ev.call details summary { cursor: pointer; font-size: 12px; color: var(--A); font-weight: 500; }
+.ev.call details pre { margin: 6px 0 0; font-size: 11.5px; white-space: pre-wrap; overflow-wrap: anywhere; color: var(--ink-2); max-height: 220px; overflow: auto; }
+.ev.call .refused { margin-top: 6px; font-size: 12.5px; color: var(--T); }
+.ev.call.no { border-color: color-mix(in srgb, var(--T) 45%, var(--rule)); }
+.ev.call.pending details, .ev.call.pending .refused { display: none; }
+.ev.call.pending .head::after { content: "running"; font-size: 11px; color: var(--C); margin-left: auto; }
+.ev.vote { font-size: 13px; color: var(--ink-2); padding: 6px 10px; border-radius: 8px; background: var(--C-wash); }
+.ev.stop { font-size: 13px; color: var(--T); padding: 6px 10px; border-radius: 8px; background: var(--T-wash); }
+.typing { display: flex; align-items: center; gap: 8px; padding: 10px 16px 14px; color: var(--ink-3); font-size: 13px; }
+.typing i { width: 6px; height: 6px; border-radius: 50%; background: var(--ink-3); animation: dot 1.2s infinite; }
+.typing i:nth-child(2) { animation-delay: .2s; } .typing i:nth-child(3) { animation-delay: .4s; }
+@keyframes dot { 0%, 80%, 100% { opacity: .2; } 40% { opacity: 1; } }
+.deriv { display: block; font-family: var(--mono); font-size: 11.5px; color: var(--A); margin-top: 3px; }
+@media (prefers-reduced-motion: reduce) { .rail5 li.active::after, .typing i, .running .spark path { animation: none; } }
+@media (max-width: 860px) { .rail5 { grid-template-columns: 1fr 1fr; } }
+
 /* ---------- responsive ---------- */
 @media (max-width: 1080px) {
   .change { grid-template-columns: 1fr; }
@@ -842,11 +899,75 @@ function showProgress(job) {
     <ol>${job.stages.map(s => `<li class="${s.state}"><span class="st" aria-hidden="true"></span><span>${esc(s.name)}<span class="sr"> (${s.state})</span></span></li>`).join("")}</ol></div>`;
 }
 
+/* ---------- agent reasoning timeline ---------- */
+const SPARK = '<svg class="spark" viewBox="0 0 20 20" aria-hidden="true"><path d="M10 1.5 12 8l6.5 2-6.5 2-2 6.5L8 12l-6.5-2L8 8z" fill="var(--C)"/></svg>';
+const TRACE = { id: null, events: [] };
+function toolKind(t) {
+  return /^(omics|logs|cloudtrail|batch|ec2|ecr|s3)_/.test(t) ? ["aws", "AWS"] : t.startsWith("facts_") ? ["fact", "FACT"] :
+    t.startsWith("web_") ? ["web", "WEB"] : t.startsWith("repo_") ? ["repo", "REPO"] : t.startsWith("finish_") ? ["finish", "CHECKPOINT"] : ["repo", "STEP"];
+}
+function argText(a) {
+  if (!a) return "";
+  return Object.entries(a).map(([k, v]) => `${k}=${typeof v === "object" ? JSON.stringify(v) : v}`).join("  ").slice(0, 220);
+}
+function tlHTML(events) {
+  // calls and their results are paired by call number
+  const results = {};
+  for (const e of events) if (e.kind === "result") results[e.n] = e;
+  return events.map(e => {
+    if (e.kind === "phase") return `<div class="ev-phase">${esc(e.text)}</div>`;
+    if (e.kind === "thought") return `<div class="ev thought"><span class="lbl">Thinking</span>${esc(e.text)}</div>`;
+    if (e.kind === "vote") return `<div class="ev vote">${esc(e.text)}</div>`;
+    if (e.kind === "stop") return `<div class="ev stop">${esc(e.text)}</div>`;
+    if (e.kind !== "call") return "";
+    const r = results[e.n], [k, label] = toolKind(e.tool);
+    const state = !r ? "pending" : r.ok ? "" : "no";
+    return `<div class="ev call ${state}"><div class="head"><span class="num">#${e.n}</span><span class="kind ${k}">${label}</span><code class="tool">${esc(e.tool)}</code><span class="args">${esc(argText(e.args))}</span></div>
+      <p class="why"><b>Why</b>${esc(e.text)}</p>
+      ${r ? (r.ok ? `<details><summary>Result</summary><pre>${esc(r.text)}</pre></details>` : `<div class="refused">${esc(r.text)}</div>`) : ""}</div>`;
+  }).join("");
+}
+function railHTML(events, status, error) {
+  const titles = ["1. Debug", "2. Research solutions", "3. Pick the best solution", "4. Implement it", "5. Open the merge request"];
+  const seen = events.filter(e => e.kind === "phase").map(e => e.text);
+  const cur = seen.length - 1;
+  const calls = p => events.filter(e => e.kind === "call" && e.phase === ["debug", "research", "decide", "implement", "mr"][p]).length;
+  return `<ol class="rail5">${titles.map((t, i) => {
+    const st = i < cur || (status === "done" && !error && i === cur) ? "done" : i === cur ? (error ? "stop" : "active") : "";
+    return `<li class="${st}"><b>${esc(t)}</b>${i <= cur ? `${calls(i)} call${calls(i) === 1 ? "" : "s"}` : "waiting"}</li>`;
+  }).join("")}</ol>`;
+}
+function showAgentProgress(job) {
+  if (TRACE.id !== job.id) { TRACE.id = job.id; TRACE.events = []; }
+  TRACE.events.push(...(job.trace || []));
+  let box = $("#agentrun");
+  if (!box) {
+    main.innerHTML = `<div class="agentrun" id="agentrun"><h1>The agent is investigating ${esc(job.label)}</h1>
+      <div class="sub"><span id="ar-elapsed"></span><span>Read-only on AWS · every step checked by pipefix</span></div>
+      <div id="ar-rail"></div>
+      <section class="think running" aria-label="Agent reasoning"><header>${SPARK}<h2>Agent reasoning</h2><span class="count" id="ar-count"></span></header>
+        <div class="tl" id="ar-tl" aria-live="polite"></div><div class="typing" id="ar-typing"><i></i><i></i><i></i><span>Thinking</span></div></section></div>`;
+    box = $("#agentrun"); box.dataset.start = Date.now();
+  }
+  const tl = $("#ar-tl"), stick = tl.scrollHeight - tl.scrollTop - tl.clientHeight < 80;
+  tl.innerHTML = tlHTML(TRACE.events);
+  $("#ar-rail").innerHTML = railHTML(TRACE.events, job.status, job.error);
+  const n = TRACE.events.filter(e => e.kind === "call").length;
+  $("#ar-count").textContent = `${n} call${n === 1 ? "" : "s"}`;
+  $("#ar-elapsed").textContent = `${Math.round((Date.now() - box.dataset.start) / 1000)} s`;
+  if (stick) tl.scrollTop = tl.scrollHeight;
+}
+
 async function poll(id) {
   let job;
-  try { job = await api("/api/jobs/" + id); } catch (e) { return showError("pipefix lost track of this investigation", e.message); }
+  const since = TRACE.id === id ? TRACE.events.length : 0;
+  try { job = await api(`/api/jobs/${id}?since=${since}`); } catch (e) { return showError("pipefix lost track of this investigation", e.message); }
   if (id !== CURRENT) return;
-  if (job.status === "running") { showProgress(job); setTimeout(() => poll(id), 500); return; }
+  if (job.status === "running") {
+    if (job.trace) showAgentProgress(job); else showProgress(job);
+    setTimeout(() => poll(id), 500); return;
+  }
+  TRACE.id = null;
   refreshHistory();
   if (job.status === "failed") return showError("The investigation stopped", job.error);
   render(job);
@@ -1085,22 +1206,21 @@ function agentBlock(r) {
   const d = a.diagnosis || {};
   const chosen = a.decision?.chosen;
   return `<section class="section" aria-labelledby="agent-h"><h2 id="agent-h">What the agent did <span class="badge">AI agent</span></h2>
-    <p class="lede"><code>${esc(a.model)}</code> ran the five required steps itself: it chose and made ${a.aws_calls} read-only AWS calls, read the repo, researched the docs, compared solutions, implemented the best one${a.mr_url ? " and opened the merge request" : ""}. pipefix enforced the order, each step's allowed commands and every evidence check${a.refused ? `, and refused ${a.refused} call(s) that broke a rule` : ""}.</p>
+    <p class="lede"><code>${esc(a.model)}</code> ran the five required steps itself: it chose and made ${a.aws_calls} read-only AWS calls and ${a.fact_calls || 0} fact lookups, read the repo, researched the docs, compared solutions, implemented the best one${a.mr_url ? " and opened the merge request" : ""}. pipefix enforced the order, each step's allowed commands and every evidence check${a.refused ? `, and refused ${a.refused} call(s) that broke a rule` : ""}.</p>
     ${a.error ? `<div class="result-msg err" style="margin-top:14px">${esc(a.error)}</div>` : ""}
     <div class="agent-steps">${phases}</div>
     <div class="aibox">
       ${d.root_cause ? `<h3>1. Debug</h3><blockquote>${esc(d.root_cause)}</blockquote><div class="quotes">${(d.evidence || []).map(e => `<blockquote class="quote"><span class="for">call #${e.call} · ${esc(e.tool)}</span>${esc(e.excerpt)}</blockquote>`).join("")}</div>` : ""}
       ${a.candidates.length ? `<h4>2. Research: candidate solutions</h4><div style="overflow-x:auto"><table class="cands"><thead><tr><th></th><th>Candidate</th><th>Settings</th><th>Pros / cons</th><th>Checks</th></tr></thead><tbody>
         ${a.candidates.map(c => `<tr class="${c.id === chosen ? "chosen" : ""}"><td><b>${esc(c.id)}</b>${c.id === chosen ? ' <span class="badge">chosen</span>' : ""}</td><td>${esc(c.title)}</td>
-          <td>${Object.entries(c.settings).map(([k, v]) => `<code>${esc(k)} = ${esc(v)}</code>`).join("<br>") || "no config change"}</td>
+          <td>${Object.entries(c.settings).map(([k, v]) => `<code>${esc(k)} = ${esc(v)}</code>${c.derivations?.[k] ? `<span class="deriv">= ${esc(c.derivations[k].formula)}; ${Object.entries(c.derivations[k].inputs).map(([n, i]) => `${esc(n)}=${esc(i.value)} (call #${esc(i.call)})`).join(", ")}</span>` : ""}`).join("<br>") || "no config change"}${(c.notes || []).filter(n => n.startsWith("lands on")).map(n => `<span class="deriv" style="color:var(--C)">${esc(n)}</span>`).join("")}</td>
           <td>${esc(c.pros)}${c.cons ? `<br><span style="color:var(--ink-3)">${esc(c.cons)}</span>` : ""}</td>
           <td>${c.valid ? "passed" : `<span class="rej">${esc(c.problems.join("; "))}</span>`}</td></tr>`).join("")}</tbody></table></div>` : ""}
-      ${a.decision?.chosen ? `<h4>3. Decision</h4><p style="margin:6px 0 0;font-size:14px">${esc(a.decision.reasons)}</p><ul class="plain">${Object.entries(a.decision.why_not || {}).map(([k, v]) => `<li>Not ${esc(k)}: ${esc(v)}</li>`).join("")}${a.decision.risks ? `<li>Risks: ${esc(a.decision.risks)}</li>` : ""}</ul>` : ""}
+      ${a.decision?.chosen ? `<h4>3. Decision${a.decision.votes ? ` <span class="badge">${Object.entries(a.decision.votes).map(([k, v]) => `${esc(k)}: ${v}`).join(" · ")} vote${a.decision.unstable ? ", unstable" : ""}</span>` : ""}</h4><p style="margin:6px 0 0;font-size:14px">${esc(a.decision.reasons)}</p><ul class="plain">${Object.entries(a.decision.why_not || {}).map(([k, v]) => `<li>Not ${esc(k)}: ${esc(v)}</li>`).join("")}${a.decision.risks ? `<li>Risks: ${esc(a.decision.risks)}</li>` : ""}</ul>` : ""}
       ${a.implement_summary ? `<h4>4. Implementation</h4><p style="margin:6px 0 0;font-size:14px">${esc(a.implement_summary)}</p>` : ""}
       ${a.mr_url ? `<h4>5. Merge request</h4><p style="margin:6px 0 0;font-size:14px"><a href="${esc(a.mr_url)}" target="_blank" rel="noopener">${esc(a.mr_url)}</a>${a.mr_summary ? ` · ${esc(a.mr_summary)}` : ""}</p>` : a.mr_summary ? `<h4>5. Merge request</h4><p style="margin:6px 0 0;font-size:14px">${esc(a.mr_summary)}</p>` : ""}
-      <details class="audit" style="margin-top:16px"><summary>Every step the agent took (${a.phases.reduce((n, p) => n + p.steps.length, 0)})</summary>
-        ${a.phases.filter(p => p.steps.length).map(p => `<h4>${esc(p.title)}</h4><ul class="steplog">${p.steps.map(s => `<li class="${s.aws ? "aws" : ""} ${s.ok ? "" : "no"}">#${s.n} ${esc(s.summary)}</li>`).join("")}</ul>`).join("")}
-      </details>
+      ${a.trace?.length ? `<details class="audit final" style="margin-top:16px"><summary>The agent's reasoning: ${a.trace.filter(e => e.kind === "call").length} calls, every thought and why it made each call</summary>
+        <section class="think" style="margin-top:12px"><header>${SPARK}<h2>Agent reasoning</h2></header><div class="tl">${tlHTML(a.trace)}</div></section></details>` : ""}
     </div></section>`;
 }
 

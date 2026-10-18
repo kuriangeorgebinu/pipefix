@@ -33,13 +33,17 @@ from .configtrace import RepoConfig, load_repo
 from .investigation import Investigation
 from .models import Diagnosis, FailureClass, TaskFailure
 from .report import redact
+from .facts import RESERVED, instance_for, memory_need, size_memory
 from .research import (AIFix, AIResult, Http, SITES, _allowed_host, _clean_query, _json, _norm, _page_text,
-                       check, excerpt, verify_quote)
+                       _process_source, check, excerpt, exit_codes, verify_quote)
 
 PHASES = ("debug", "research", "decide", "implement", "mr")
 PHASE_TITLE = {"debug": "1. Debug", "research": "2. Research solutions", "decide": "3. Pick the best solution",
                "implement": "4. Implement it", "mr": "5. Open the merge request"}
-BUDGET = {"debug": 24, "research": 16, "decide": 3, "implement": 4, "mr": 3}
+BUDGET = {"debug": 26, "research": 18, "decide": 3, "implement": 4, "mr": 3}
+TRANSIENT_CODES = set(range(130, 146)) | {104, 247, 175, 176, 177}   # kills/signals/connection resets
+NUMERIC = ("memory", "time", "cpus", "disk")                       # settings that need a derivation
+DECISION_SAMPLES = 3
 MAX_FINISH_TRIES = 4
 OUT_CHARS = 6000
 LOG_GROUPS = ("/aws/omics/WorkflowLog", "/aws/batch/job")
@@ -132,6 +136,27 @@ COMMANDS: dict[str, dict] = {
                            "desc": "Every config line that sets memory/time/cpus/errorStrategy/maxRetries/queue for a "
                                    "process, with file:line, selector and which one wins (Nextflow precedence).",
                            "params": {"process": _p("string", "process name, e.g. SORT_READS")}, "required": ["process"]},
+    # ---- 1. debug (also usable in research): deterministic facts, computed by pipefix ----
+    "facts_memory_need": {"phase": "debug", "also": ("research",),
+                          "desc": "What the failed process's own command asks for in memory: reads its script and "
+                                  "params and extracts --buffer-gb, -Xmx, sort -S, samtools -m, --mem... (GiB). Also "
+                                  "returns the cpus/memory in effect now.",
+                          "params": {"process": _p("string", "process name, e.g. SORT_READS")}, "required": ["process"]},
+    "facts_instance": {"phase": "debug", "also": ("research",),
+                       "desc": "Which HealthOmics instance a (cpus, memory) request lands on, and the memory usable "
+                               "after the 5% HealthOmics reserves for its agents.",
+                       "params": {"cpus": _p("number", "vCPUs requested"), "memory_gib": _p("number", "GiB requested")},
+                       "required": ["cpus", "memory_gib"]},
+    "facts_size_memory": {"phase": "debug", "also": ("research",),
+                          "desc": "The playbook memory size for a need: ceil(need * 1.15 / 0.95) GiB, and the instance "
+                                  "it lands on.",
+                          "params": {"need_gib": _p("number", "GiB the task needs"),
+                                     "cpus": _p("number", "vCPUs the task will request")},
+                          "required": ["need_gib", "cpus"]},
+    "facts_last_success": {"phase": "debug",
+                           "desc": "The most recent COMPLETED run of the same HealthOmics workflow and what its tasks "
+                                   "were given (cpus, memory), to see whether something changed.",
+                           "params": {}, "required": []},
     "finish_debug": {"phase": "debug", "finish": True,
                      "desc": "End step 1 with the diagnosis. Evidence must quote the output of calls you made.",
                      "params": {"process": _p("string", "failed process (simple name)"),
@@ -154,8 +179,8 @@ COMMANDS: dict[str, dict] = {
     "web_read_page": {"phase": "research", "desc": "Read a search result. Returns the relevant passages of the page.",
                       "params": {"source": _p("integer", "source number from web_search")}, "required": ["source"]},
     "finish_research": {"phase": "research", "finish": True,
-                        "desc": "End step 2 with 2-4 candidate solutions. Every setting needs a verbatim quote from a "
-                                "page you READ with web_read_page.",
+                        "desc": "End step 2 with 2-4 candidate solutions. Numbers (memory, time, cpus, disk) need a "
+                                "derivation pipefix recomputes; other settings need a verbatim quote from a page you READ.",
                         "params": {"candidates": _p("array", "candidate solutions", items={
                             "type": "object", "properties": {
                                 "id": {"type": "string", "description": "short id, e.g. A"},
@@ -164,11 +189,16 @@ COMMANDS: dict[str, dict] = {
                                 "settings": {"type": "object", "description": "directive -> value (may be {} for a "
                                                                               "non-config solution)"},
                                 "rationale": {"type": "string"},
+                                "derivations": {"type": "object", "description":
+                                    "setting -> {formula, inputs}. formula: arithmetic over the input names, numbers, "
+                                    "ceil/floor/max/min/round (e.g. 'ceil(need_gib * 1.15 / 0.95)'); it must give the "
+                                    "first-attempt number of the value. inputs: name -> {value: number, call: the # of "
+                                    "the call whose output shows that number}"},
                                 "pros": {"type": "string"}, "cons": {"type": "string"},
                                 "evidence": {"type": "array", "items": {"type": "object", "properties": {
                                     "setting": {"type": "string"}, "source": {"type": "integer"},
                                     "quote": {"type": "string"}}, "required": ["source", "quote"]}}},
-                            "required": ["id", "title", "settings", "rationale", "evidence"]})},
+                            "required": ["id", "title", "settings", "rationale"]})},
                         "required": ["candidates"]},
     # ---- 3. decide ----
     "finish_decision": {"phase": "decide", "finish": True,
@@ -210,25 +240,37 @@ HARD RULES (breaking one gets your call refused):
   the directives you CHANGE. Config values must use these forms: memory "{ N.GB * task.attempt }",
   time "{ N.h * task.attempt }", cpus "N", maxRetries "N", errorStrategy
   "{ task.exitStatus in <codes> ? 'retry' : 'finish' }" (codes: integers, a..b ranges, + and parentheses).
-- Size resources from what the task actually needs (read the process script and params for tool flags such as
-  --buffer-gb, -Xmx, sort -S, --mem) and leave headroom. Only widen a retry rule with an exit code when the
-  failure is memory-related and the evidence shows it.
+- NUMBERS ARE DERIVED, NEVER GUESSED: every memory/time/cpus/disk value needs a derivation (formula + inputs, each
+  input traced to the call whose output shows it); pipefix recomputes it. Use the facts_* commands: they compute
+  the memory the command asks for, the instance a request lands on, and the playbook size.
+- PLAYBOOK. Out of memory: measure the need (facts_memory_need) -> size it (facts_size_memory: need + 15%
+  headroom, / 0.95 for the HealthOmics reserve) -> check the instance (facts_instance) -> retry ONLY if the failure
+  is transient (exit 130-145, 104, 247: a kill or signal); an exit code from the tool itself (e.g. 1, MemoryError)
+  is deterministic: size it right instead of retrying. Never change cpus, time or disk unless you can derive the
+  new number from evidence (e.g. a threads flag); a single-threaded tool does not need more cpus. A retry rule must
+  keep every code it has now and may add only the observed transient code. maxRetries only matters if the
+  observed exit code is retried.
+- THINK OUT LOUD: before each tool call, write 1-3 sentences of reasoning in your message, and give every call a
+  short 'reason' (why this call, what you expect to learn or decide).
 - Be efficient: a few targeted calls per step. Account IDs appear as <account-id>; pass them as is."""
 
 PHASE_BRIEF = {
     "debug": "STEP 1, DEBUG. Start from the run you were given. Read the run, its failed tasks, the task and engine "
-             "logs, then the pipeline repo (process script, params, the config lines that set its resources). Finish "
-             "with finish_debug: process, failure_class, exit_code, root_cause with numbers, and evidence quoting "
-             "your calls by #.",
+             "logs, then the pipeline repo (process script, params, the config lines that set its resources). For a "
+             "resource failure call facts_memory_need and facts_instance (and facts_last_success for HealthOmics). "
+             "Finish with finish_debug: process, failure_class, exit_code, root_cause with numbers, and evidence "
+             "quoting your calls by #.",
     "research": "STEP 2, RESEARCH SOLUTIONS. Search the docs (aws, nextflow, terraform) for how to fix this failure, "
                 "READ the useful results with web_read_page, then finish_research with 2-4 genuinely different "
                 "candidates (e.g. raise memory vs lower the tool's buffer; with or without retry changes). Each "
                 "setting needs a verbatim quote from a page you read. Cite pages by their SOURCE number (the "
                 "'source' in web_search results, 'cite_as_source' in web_read_page), copy quotes exactly from the "
                 "'passages', and only cite pages you have read. Label each quote with the setting it supports "
-                "(memory, cpus, time, errorStrategy, maxRetries); a quote only supports a setting it talks about.",
-    "decide": "STEP 3, PICK THE BEST SOLUTION. No tools. Compare the candidates on correctness for THIS failure, cost, "
-              "and risk, then call finish_decision.",
+                "(memory, cpus, time, errorStrategy, maxRetries); a quote only supports a setting it talks about. "
+                "Every number needs a 'derivations' entry (formula + inputs traced to calls, e.g. facts_size_memory). "
+                "Only include settings you change.",
+    "decide": "STEP 3, PICK THE BEST SOLUTION. No tools. Compare the candidates on correctness for THIS failure "
+              "(does the first attempt pass?), cost (instance size, retries) and risk, then call finish_decision.",
     "implement": "STEP 4, IMPLEMENT. Call implement_apply, check the diff it returns, then finish_implement.",
     "mr": "STEP 5, MERGE REQUEST. Call mr_open, then finish_mr with one line for the person reading the result.",
 }
@@ -245,6 +287,7 @@ class Step:
     ok: bool
     summary: str                # one line for the UI / MR
     output: str = ""            # what the model saw (redacted, truncated)
+    reason: str = ""            # why the agent made this call (its own words)
 
 
 @dataclass
@@ -264,6 +307,7 @@ class AgentResult:
     ai: AIResult | None = None
     patch: object = None
     refused: int = 0
+    trace: list[dict] = field(default_factory=list)   # the reasoning timeline: phase / thought / call / result / vote
 
     @property
     def done(self) -> bool:
@@ -293,9 +337,55 @@ class _Stop(Exception):
 
 def _tool_schema(name: str) -> dict:
     c = COMMANDS[name]
+    props = {**c["params"], "reason": _p("string", "why you are making this call: what you expect to learn or decide")}
     return {"type": "function", "function": {
         "name": name, "description": c["desc"],
-        "parameters": {"type": "object", "properties": c["params"], "required": c.get("required", [])}}}
+        "parameters": {"type": "object", "properties": props, "required": [*c.get("required", []), "reason"]}}}
+
+
+def _in_phase(name: str, phase: str) -> bool:
+    c = COMMANDS[name]
+    return c["phase"] == phase or phase in c.get("also", ())
+
+
+_FUNCS = {"ceil": __import__("math").ceil, "floor": __import__("math").floor, "max": max, "min": min, "round": round}
+
+
+def safe_eval(formula: str, names: dict) -> float:
+    """Arithmetic only: numbers, the given names, + - * / ** (), ceil floor max min round."""
+    import ast
+
+    def ev(n):
+        if isinstance(n, ast.Expression):
+            return ev(n.body)
+        if isinstance(n, ast.Constant) and isinstance(n.value, (int, float)):
+            return n.value
+        if isinstance(n, ast.Name) and n.id in names:
+            return names[n.id]
+        if isinstance(n, ast.BinOp) and isinstance(n.op, (ast.Add, ast.Sub, ast.Mult, ast.Div, ast.Pow)):
+            a, b = ev(n.left), ev(n.right)
+            return {ast.Add: a + b, ast.Sub: a - b, ast.Mult: a * b, ast.Div: a / b if b else float("inf"),
+                    ast.Pow: a ** b if abs(b) < 8 else float("inf")}[type(n.op)]
+        if isinstance(n, ast.UnaryOp) and isinstance(n.op, (ast.USub, ast.UAdd)):
+            return -ev(n.operand) if isinstance(n.op, ast.USub) else ev(n.operand)
+        if isinstance(n, ast.Call) and isinstance(n.func, ast.Name) and n.func.id in _FUNCS and not n.keywords:
+            return _FUNCS[n.func.id](*[ev(x) for x in n.args])
+        raise ValueError(f"not allowed in a formula: {ast.dump(n)[:60]}")
+    if len(formula) > 200:
+        raise ValueError("formula too long")
+    return float(ev(ast.parse(formula, mode="eval")))
+
+
+def first_number(setting: str, value: str) -> float | None:
+    """The first-attempt number in a config value: '{ 15.GB * task.attempt }' -> 15, '{ [16.GB*task.attempt, 30.GB]
+    .min() }' -> 16, '4' -> 4."""
+    m = re.search(r"(\d+(?:\.\d+)?)", value or "")
+    return float(m.group(1)) if m else None
+
+
+def _codes_of(expr: str | None) -> set[int] | None:
+    m = re.search(r"task\.exitStatus\s+in\s+([\d\s.,+()\[\]]+?)\s*\?", expr or "")
+    return exit_codes(m.group(1)) if m else None
 
 
 def _short(obj, limit: int = OUT_CHARS) -> str:
@@ -307,12 +397,14 @@ def _short(obj, limit: int = OUT_CHARS) -> str:
 class Agent:
     def __init__(self, clients: Clients | None, repo: str | Path | None, goal: dict, http: Http | None = None,
                  allow_mr: bool = False, on_step=None, mr_opener=None, max_seconds: int = 900,
-                 transcript: str | Path | None = None):
+                 transcript: str | Path | None = None, on_event=None, decision_samples: int = DECISION_SAMPLES):
         self.clients, self.goal, self.http = clients, goal, http or Http()
         self.repo = Path(repo).resolve() if repo else None
         self.cfg: RepoConfig | None = load_repo(self.repo) if self.repo and (self.repo / "nextflow.config").is_file() \
             else None
         self.allow_mr, self.on_step, self.mr_opener = allow_mr, on_step or (lambda s: None), mr_opener
+        self.on_event = on_event or (lambda e: None)
+        self.decision_samples = decision_samples
         self.deadline = time.time() + max_seconds
         self.transcript = Path(transcript) if transcript else None
         key, self.base, self.model = keys.llm_endpoint()
@@ -331,8 +423,14 @@ class Agent:
         self.res.inv = self.inv
 
     # ----- the LLM -----
-    def _chat(self, messages: list[dict], tools: list[dict]) -> dict:
-        payload = {"model": self.model, "temperature": 0, "messages": messages}
+    def _event(self, kind: str, text: str, phase: str = "", **extra) -> None:
+        ev = {"kind": kind, "phase": phase or self.res.phase_reached, "text": redact(str(text))[:2000],
+              "t": round(time.time(), 2), **extra}
+        self.res.trace.append(ev)
+        self.on_event(ev)
+
+    def _chat(self, messages: list[dict], tools: list[dict], temperature: float = 0) -> dict:
+        payload = {"model": self.model, "temperature": temperature, "messages": messages}
         if tools:
             payload["tools"], payload["tool_choice"] = tools, "required"
         out = self.http.post_json(f"{self.base}/chat/completions", payload, {"Authorization": f"Bearer {self.llm_key}"},
@@ -340,9 +438,9 @@ class Agent:
         return out["choices"][0]["message"]
 
     # ----- record -----
-    def _record(self, phase: str, tool: str, args: dict, ok: bool, summary: str, output: str) -> Step:
+    def _record(self, phase: str, tool: str, args: dict, ok: bool, summary: str, output: str, reason: str = "") -> Step:
         st = Step(phase, self.n, tool, json.loads(redact(json.dumps(args, default=str))), ok, redact(summary)[:300],
-                  output)
+                  output, redact(reason)[:400])
         self.res.steps.append(st)
         self.on_step(st)
         return st
@@ -448,6 +546,50 @@ class Agent:
                     "settings": [{"directive": s.directive, "value": s.value.strip(), "where": s.where,
                                   "selector": s.selector, "wins": tr.effective(s.directive) is s}
                                  for s in tr.settings], "params": dict(list(self.cfg.params.items())[:40])}
+        raise _Refused(name)
+
+    # ----- facts (deterministic, computed by pipefix) -----
+    def _current(self, proc: str) -> dict:
+        tr = self.cfg.trace(proc) if self.cfg and proc in self.cfg.processes else None
+        out = {}
+        for d in ("memory", "cpus", "time", "errorStrategy", "maxRetries"):
+            s = tr.effective(d) if tr else None
+            if s:
+                out[d] = {"value": s.value.strip(), "where": s.where}
+        return out
+
+    def _facts(self, name: str, args: dict):
+        if name == "facts_memory_need":
+            proc = str(args.get("process", "")).split(":")[-1].strip()
+            if not self.cfg or proc not in self.cfg.processes:
+                raise _Refused(f"process {proc!r} is not defined in the repo")
+            src = _process_source(self.cfg, proc)
+            need = memory_need(src, dict(self.cfg.params))
+            return {"process": proc, **need, "in_effect_now": self._current(proc)}
+        if name == "facts_instance":
+            if self.inv.platform != "healthomics":
+                raise _Refused("facts_instance covers HealthOmics; for Batch use ec2_describe_instance_types")
+            return instance_for(float(args["cpus"]), float(args["memory_gib"]))
+        if name == "facts_size_memory":
+            return size_memory(float(args["need_gib"]), float(args.get("cpus") or 1))
+        if name == "facts_last_success":
+            run_id = self.goal.get("omics_run")
+            if not run_id or not self.clients:
+                raise _Refused("only for HealthOmics runs")
+            run = self.clients.call("omics", "get_run", id=run_id)
+            wf = run.get("workflowId")
+            runs = self.clients.call("omics", "list_runs", status="COMPLETED", maxResults=50).get("items", [])
+            same = [r for r in runs if r.get("workflowId") == wf and r.get("id") != run_id]
+            self.inv.calls[:] = self.clients.calls
+            if not same:
+                return {"workflow": wf, "last_success": None,
+                        "note": "no completed run of this workflow: nothing to compare with"}
+            last = max(same, key=lambda r: str(r.get("stopTime") or r.get("creationTime") or ""))
+            tasks = self.clients.call("omics", "list_run_tasks", id=last["id"], maxResults=100).get("items", [])
+            self.inv.calls[:] = self.clients.calls
+            return {"workflow": wf, "last_success": {"run": last.get("id"), "name": last.get("name"),
+                                                     "stopped": last.get("stopTime")},
+                    "tasks": [{k: t.get(k) for k in ("name", "cpus", "memory", "status")} for t in tasks[:30]]}
         raise _Refused(name)
 
     # ----- research -----
@@ -563,11 +705,25 @@ class Agent:
                 label = str(ev.get("setting", "")).strip()
                 lm = re.search(r"(memory|time|cpus|errorStrategy|maxRetries|queue|disk)\s*$", label)
                 evid.append({"setting": lm.group(1) if lm else "", "n": n, "quote": redact(quote)})
-            # every changed setting needs a verified quote that is about that setting
+            # numbers must be derived (pipefix recomputes); other settings need a verified quote about them
+            derived = {}
+            derivs = c.get("derivations") or {}
             for k, v in settings.items():
                 why = check(proc, k, v, ctx)
                 if why:
                     cp.append(f"{k} = {v}: {why}")
+                    continue
+                if k in NUMERIC:
+                    d = derivs.get(k) or next((dv for dk, dv in derivs.items() if str(dk).endswith(k)), None)
+                    why = self._check_derivation(k, v, d)
+                    if why:
+                        cp.append(f"{k} = {v}: {why}")
+                    else:
+                        derived[k] = {"formula": str(d["formula"]), "inputs": d["inputs"]}
+                        topic = SUBJECT.get(k)
+                        for e in evid:   # quotes about a derived number are shown with it (not required)
+                            if e["setting"] in ("", k) and topic and re.search(topic, e["quote"], re.I):
+                                e.setdefault("supports", []).append(k)
                     continue
                 topic = SUBJECT.get(k)
                 support = [e for e in evid if e["setting"] in ("", k) and (not topic or re.search(topic, e["quote"], re.I))]
@@ -577,14 +733,16 @@ class Agent:
                     e.setdefault("supports", []).append(k)
             for e in evid:   # a quote may support several settings; one that supports none is only context
                 e["setting"] = ", ".join(e.pop("supports", [])) or "context"
-            if not evid:
-                cp.append("no verified quote at all")
+            cp += self._playbook(proc, settings)
+            if not evid and not derived:
+                cp.append("no verified quote or derivation at all")
             if cp:
                 problems.append(f"candidate {cid}: " + "; ".join(cp))
             cands.append({"id": cid, "title": redact(str(c.get("title", "")))[:160], "process": proc,
                           "settings": settings, "rationale": redact(str(c.get("rationale", "")))[:1500],
                           "pros": redact(str(c.get("pros", "")))[:400], "cons": redact(str(c.get("cons", "")))[:400],
-                          "evidence": evid, "valid": not cp, "problems": cp, "notes": notes})
+                          "evidence": evid, "derivations": derived, "valid": not cp, "problems": cp,
+                          "notes": notes + self._landing(proc, settings)})
         if len(cands) < 2:
             problems.append("give at least 2 genuinely different candidates")
         if not any(c["valid"] for c in cands):
@@ -593,7 +751,7 @@ class Agent:
         if fixable and not any(c["valid"] and c["settings"] for c in cands):
             problems.append(f"a {self.res.diagnosis['failure_class']} failure is fixable by config, so at least one "
                             "candidate must change settings and pass every check; fix the problems above "
-                            "(remove settings you cannot support with a quote about them)")
+                            "(numbers need a derivation; remove settings you cannot derive or support)")
         if len(cands) < 2 or not any(c["valid"] for c in cands) or (fixable and not any(c["valid"] and c["settings"]
                                                                                         for c in cands)):
             extra = [f"candidate {c['id']} notes: " + "; ".join(c["notes"]) for c in cands if c["notes"]]
@@ -603,7 +761,78 @@ class Agent:
         return "Research accepted." + ("".join(f" Candidate {c['id']} failed checks and cannot be chosen: "
                                                f"{'; '.join(c['problems'])}." for c in bad))
 
-    def _finish_decision(self, a: dict) -> str:
+    def _check_derivation(self, k: str, v: str, d) -> str | None:
+        """None if the number is derived from traced inputs and the formula reproduces it."""
+        if not isinstance(d, dict) or not d.get("formula") or not isinstance(d.get("inputs"), dict):
+            return "a number needs a derivation: {formula, inputs: {name: {value, call}}} (strict rule)"
+        target = first_number(k, v)
+        names = {}
+        for name, inp in d["inputs"].items():
+            if not re.fullmatch(r"[A-Za-z_]\w{0,40}", str(name)):
+                return f"input name {name!r} is not a plain name"
+            if not isinstance(inp, dict) or not isinstance(inp.get("value"), (int, float)):
+                return f"input {name} needs a numeric value and the call # that shows it"
+            n = inp.get("call")
+            n = int(n) if isinstance(n, (int, float)) or (isinstance(n, str) and str(n).isdigit()) else None
+            out = self.outputs.get(n or -1, "")
+            val = float(inp["value"])
+            num = f"{val:g}"
+            if not out or not re.search(rf"(?<![\d.]){re.escape(num)}(?:\.0+)?(?![\d])", out):
+                return f"input {name}={num} is not shown in the output of call #{n}"
+            names[str(name)] = val
+        try:
+            got = safe_eval(str(d["formula"]), names)
+        except (ValueError, SyntaxError, TypeError, ZeroDivisionError) as e:
+            return f"formula cannot be evaluated: {e}"
+        if target is None or abs(got - target) > max(0.01, 0.005 * target):
+            return f"the formula gives {got:g}, but the value says {target:g} (round inside the formula, e.g. ceil)"
+        return None
+
+    def _playbook(self, proc: str, settings: dict) -> list[str]:
+        """The per-failure-class rules, checked in code."""
+        out, d = [], self.res.diagnosis
+        code = d.get("exit_code")
+        cur = self._current(proc)
+        cur_codes = _codes_of(cur.get("errorStrategy", {}).get("value"))
+        if "errorStrategy" in settings:
+            new = _codes_of(settings["errorStrategy"])
+            if new is not None and cur_codes is not None and not cur_codes <= new:
+                out.append(f"errorStrategy drops codes it retries now ({sorted(cur_codes - new)[:5]}); keep them all")
+            added = (new or set()) - (cur_codes or set())
+            if code is not None and added - {code}:
+                out.append(f"errorStrategy adds codes other than the observed exit {code}: {sorted(added - {code})[:5]}")
+            if code is not None and code in added and code not in TRANSIENT_CODES:
+                out.append(f"exit {code} comes from the tool itself, so a retry repeats it (deterministic); size the "
+                           "resource so the first attempt passes instead of retrying")
+        if "maxRetries" in settings:
+            codes = _codes_of(settings.get("errorStrategy")) if "errorStrategy" in settings else cur_codes
+            if code is not None and codes is not None and code not in codes:
+                out.append(f"maxRetries has no effect: exit {code} is not retried")
+        if "memory" in settings and d.get("failure_class") == "out_of_memory" and self.cfg and proc in self.cfg.processes:
+            need = memory_need(_process_source(self.cfg, proc), dict(self.cfg.params)).get("need_gib")
+            mem = first_number("memory", settings["memory"])
+            if need and mem is not None and mem * (1 - RESERVED) < need * 1.05:
+                out.append(f"memory {mem:g} GiB leaves {mem * (1 - RESERVED):.2f} GiB usable after the "
+                           f"{int(RESERVED * 100)}% HealthOmics reserve, less than the {need:g} GiB the command asks "
+                           "for plus 5%; it would run out again")
+        if self.inv.platform == "healthomics" and ("memory" in settings or "cpus" in settings):
+            mem = first_number("memory", settings.get("memory") or cur.get("memory", {}).get("value", ""))
+            cpu = first_number("cpus", settings.get("cpus") or cur.get("cpus", {}).get("value", "")) or 1
+            if mem and not instance_for(cpu, mem)["fits"]:
+                out.append(f"no HealthOmics instance has {cpu:g} vCPU and {mem:g} GiB")
+        return out
+
+    def _landing(self, proc: str, settings: dict) -> list[str]:
+        if self.inv.platform != "healthomics" or not ("memory" in settings or "cpus" in settings):
+            return []
+        cur = self._current(proc)
+        mem = first_number("memory", settings.get("memory") or cur.get("memory", {}).get("value", ""))
+        cpu = first_number("cpus", settings.get("cpus") or cur.get("cpus", {}).get("value", "")) or 1
+        i = instance_for(cpu, mem or 1)
+        return [f"lands on {i['instance']} ({i.get('instance_vcpus')} vCPU / {i.get('instance_memory_gib')} GiB); "
+                f"{i['usable_memory_gib']} GiB usable after the reserve"] if i["fits"] else []
+
+    def _check_decision(self, a: dict) -> dict:
         ids = {c["id"]: c for c in self.res.candidates}
         chosen = str(a.get("chosen", "")).strip()
         if chosen not in ids:
@@ -616,18 +845,52 @@ class Agent:
             raise _Refused(f"say why each other candidate lost; missing: {missing}")
         if len(str(a.get("reasons", "")).strip()) < 40:
             raise _Refused("reasons are too thin; compare against the evidence")
-        self.res.decision = {"chosen": chosen, "reasons": redact(str(a["reasons"]))[:1500],
-                             "why_not": {k: redact(v)[:600] for k, v in why_not.items()},
-                             "risks": redact(str(a.get("risks", "")))[:800]}
-        return f"Decision accepted: {chosen}."
+        return {"chosen": chosen, "reasons": redact(str(a["reasons"]))[:1500],
+                "why_not": {k: redact(v)[:600] for k, v in why_not.items()},
+                "risks": redact(str(a.get("risks", "")))[:800]}
+
+    def _finish_decision(self, a: dict) -> str:
+        self.res.decision = self._check_decision(a)
+        return f"Decision accepted: {self.res.decision['chosen']}."
+
+    def _vote(self, base: list[dict], tools: list[dict]) -> None:
+        """Self-consistency: decide again independently; the majority wins, a split is flagged as unstable."""
+        first = self.res.decision
+        samples = [first]
+        for i in range(self.decision_samples - 1):
+            try:
+                msg = self._chat(list(base), tools, temperature=0.5)
+                tc = next(t for t in msg.get("tool_calls") or [] if t["function"]["name"] == "finish_decision")
+                d = self._check_decision(json.loads(tc["function"].get("arguments") or "{}"))
+                samples.append(d)
+                self._event("vote", f"Independent decision {i + 2}: {d['chosen']}. {d['reasons'][:300]}",
+                            phase="decide")
+            except Exception as e:  # noqa: BLE001 - an invalid sample just doesn't vote
+                self._event("vote", f"Independent decision {i + 2} was not valid ({type(e).__name__}); "
+                                    "it does not vote.", phase="decide", ok=False)
+        from collections import Counter
+        votes = Counter(d["chosen"] for d in samples)
+        top, n = votes.most_common(1)[0]
+        final = first if first["chosen"] == top or n < 2 else next(d for d in samples if d["chosen"] == top)
+        self.res.decision = {**final, "votes": dict(votes), "unstable": n < 2}
+        self._event("vote", f"Votes {dict(votes)}: " + (f"{top} wins by majority." if n >= 2 else
+                    f"no majority, keeping the first decision ({first['chosen']}) and flagging it as unstable."),
+                    phase="decide")
 
     def _build_ai(self) -> AIResult:
         c = next(c for c in self.res.candidates if c["id"] == self.res.decision["chosen"])
         ai = AIResult(model=self.model, queries=[s.args.get("query", "") for s in self.res.steps if s.tool == "web_search"],
                       sources=[{k: s.get(k) for k in ("n", "title", "url", "snippet", "site", "read")} for s in self.sources])
         why = f"{c['title']}: {c['rationale']}"
+        for k, d in (c.get("derivations") or {}).items():
+            ins = ", ".join(f"{n}={i['value']:g} (call #{i['call']})" for n, i in d["inputs"].items())
+            why += f" [{k} = {d['formula']} with {ins}]"
         if c["settings"]:
-            ai.fixes.append(AIFix(c["process"], dict(c["settings"]), why, sorted({e["n"] for e in c["evidence"]}),
+            settings = dict(c["settings"])
+            cap = self._memory_cap(c["process"], settings)
+            if cap:
+                settings["resourceLimits"] = f"[ memory: {cap:g}.GB ]"
+            ai.fixes.append(AIFix(c["process"], settings, why, sorted({e["n"] for e in c["evidence"]}),
                                   list(c["evidence"])))
         ai.summary = self.res.decision["reasons"]
         for o in self.res.candidates:
@@ -636,6 +899,21 @@ class Agent:
                                           "detail": self.res.decision["why_not"].get(o["id"], ""),
                                           "sources": sorted({e["n"] for e in o["evidence"]}), "evidence": o["evidence"]})
         return ai
+
+    def _memory_cap(self, proc: str, settings: dict) -> float | None:
+        """resourceLimits: no retry of the observed code -> cap at the first attempt; else first * (1 + retries)."""
+        mem = first_number("memory", settings.get("memory", "")) if "memory" in settings else None
+        if not mem:
+            return None
+        cur = self._current(proc)
+        codes = _codes_of(settings.get("errorStrategy") or cur.get("errorStrategy", {}).get("value"))
+        code = self.res.diagnosis.get("exit_code")
+        retried = code is not None and codes is not None and code in codes
+        try:
+            mr = int(settings.get("maxRetries") or re.sub(r"\D", "", cur.get("maxRetries", {}).get("value", "1")) or 1)
+        except ValueError:
+            mr = 1
+        return mem * (1 + mr) if retried and "task.attempt" in settings["memory"] else mem
 
     def _diagnoses(self) -> list[Diagnosis]:
         d = self.res.diagnosis
@@ -676,11 +954,13 @@ class Agent:
     def _run_tool(self, phase: str, name: str, args: dict) -> tuple[str, bool]:
         if name not in COMMANDS:
             raise _Refused(f"{name} is not a pipefix command")
-        if COMMANDS[name]["phase"] != phase:
+        if not _in_phase(name, phase):
             raise _Refused(f"{name} belongs to step {PHASE_TITLE[COMMANDS[name]['phase']]}; you are in "
                            f"{PHASE_TITLE[phase]}. Finish this step first.")
         if COMMANDS[name].get("aws"):
             out = self._aws(name, args)
+        elif name.startswith("facts_"):
+            out = self._facts(name, args)
         elif name.startswith("repo_"):
             out = self._repo(name, args)
         elif name.startswith("web_"):
@@ -725,8 +1005,10 @@ class Agent:
         try:
             for phase in PHASES:
                 self.res.phase_reached = phase
-                tools = [_tool_schema(n) for n, c in COMMANDS.items() if c["phase"] == phase]
+                tools = [_tool_schema(n) for n in COMMANDS if _in_phase(n, phase)]
                 messages.append({"role": "user", "content": PHASE_BRIEF[phase]})
+                self._event("phase", PHASE_TITLE[phase], phase=phase)
+                decide_base = list(messages) if phase == "decide" else None
                 calls, finish_fails = 0, 0
                 done = False
                 while not done:
@@ -734,6 +1016,8 @@ class Agent:
                         raise RuntimeError("time limit reached")
                     msg = self._chat(messages, tools)
                     tcs = msg.get("tool_calls") or []
+                    if (msg.get("content") or "").strip():
+                        self._event("thought", msg["content"].strip(), phase=phase)
                     messages.append({"role": "assistant", "content": msg.get("content") or "",
                                      **({"tool_calls": tcs} if tcs else {})})
                     if not tcs:
@@ -745,8 +1029,14 @@ class Agent:
                             args = json.loads(tc["function"].get("arguments") or "{}")
                         except ValueError:
                             args = {}
+                        reason = str(args.pop("reason", "") or "").strip()
                         self.n += 1
                         calls += 1
+                        shown_args = {k: v for k, v in args.items() if k not in ("candidates", "evidence", "why_not",
+                                                                                "derivations")}
+                        self._event("call", reason or "(no reason given)", phase=phase, tool=name, n=self.n,
+                                    args=json.loads(redact(json.dumps(shown_args, default=str)))
+                                    if len(json.dumps(shown_args, default=str)) < 600 else {"...": "large"})
                         try:
                             text, finished = self._run_tool(phase, name, args)
                             ok = True
@@ -761,11 +1051,14 @@ class Agent:
                             text, finished, ok = f"ERROR: {type(e).__name__}: {redact(str(e))[:300]}", False, False
                         self.outputs[self.n] = text if ok else ""
                         shown = text if ok else text
-                        self._record(phase, name, args, ok, self._summary(name, args, text, ok), shown[:2000])
+                        self._record(phase, name, args, ok, self._summary(name, args, text, ok), shown[:2000], reason)
+                        self._event("result", text[:600], phase=phase, tool=name, n=self.n, ok=ok)
                         prefix = f"[call #{self.n}] " if phase == "debug" else ""
                         messages.append({"role": "tool", "tool_call_id": tc["id"], "content": prefix + text})
                         if finished:
                             done = True
+                    if done and phase == "decide" and decide_base is not None and self.decision_samples > 1:
+                        self._vote(decide_base, tools)
                     if done and phase == "decide":
                         chosen = next(c for c in self.res.candidates if c["id"] == self.res.decision["chosen"])
                         if not chosen["settings"]:
@@ -780,10 +1073,12 @@ class Agent:
                                                                     f"finish_{phase if phase != 'decide' else 'decision'} now."})
         except _Stop as e:
             self.res.error = str(e)
+            self._event("stop", str(e))
         except AwsUnavailable as e:
             self.res.error = str(e)
         except Exception as e:  # noqa: BLE001 - reported in the result
             self.res.error = redact(f"Agent stopped in {PHASE_TITLE.get(self.res.phase_reached, '?')}: {e}")
+            self._event("stop", self.res.error, ok=False)
         self.inv.calls[:] = self.clients.calls if self.clients else []
         if self.transcript:  # the full conversation (already redacted), for debugging the agent
             self.transcript.write_text(json.dumps(messages, indent=1, default=str), encoding="utf-8")
@@ -817,9 +1112,11 @@ def to_json(res: AgentResult) -> dict:
     """What the console shows about the agent's run."""
     return {"model": res.model, "error": res.error, "phase_reached": res.phase_reached, "refused": res.refused,
             "phases": [{"id": p, "title": PHASE_TITLE[p],
-                        "steps": [{"n": s.n, "tool": s.tool, "ok": s.ok, "summary": s.summary,
+                        "steps": [{"n": s.n, "tool": s.tool, "ok": s.ok, "summary": s.summary, "reason": s.reason,
                                    "aws": bool(COMMANDS.get(s.tool, {}).get("aws"))}
                                   for s in res.steps if s.phase == p]} for p in PHASES],
             "diagnosis": res.diagnosis, "candidates": res.candidates, "decision": res.decision,
             "implement_summary": res.implement_summary, "mr_url": res.mr_url, "mr_summary": res.mr_summary,
-            "aws_calls": sum(1 for s in res.steps if s.ok and COMMANDS.get(s.tool, {}).get("aws"))}
+            "aws_calls": sum(1 for s in res.steps if s.ok and COMMANDS.get(s.tool, {}).get("aws")),
+            "fact_calls": sum(1 for s in res.steps if s.ok and s.tool.startswith("facts_")),
+            "trace": res.trace}

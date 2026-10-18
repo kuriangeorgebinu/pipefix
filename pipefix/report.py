@@ -66,12 +66,17 @@ def _agent_section(patch: Patch) -> list[str]:
         lines += ["**2. Research: candidate solutions**", "", "| | Candidate | Settings | Checks |", "|---|---|---|---|"]
         for c in res.candidates:
             mark = "**chosen**" if c["id"] == res.decision.get("chosen") else c["id"]
-            sets = "; ".join(f"`{k} = {_md(v)}`" for k, v in c["settings"].items()) or "no config change"
+            sets = "; ".join(f"`{k} = {_md(v)}`" + (f" = `{_md(c['derivations'][k]['formula'])}`"
+                                                    if c.get("derivations", {}).get(k) else "")
+                             for k, v in c["settings"].items()) or "no config change"
             lines.append(f"| {mark} | {_md(c['title'])} | {sets} | "
                          f"{'passed' if c['valid'] else _md('failed: ' + '; '.join(c['problems'])[:200])} |")
         lines.append("")
     if res.decision:
-        lines += [f"**3. Decision.** {_md(res.decision['reasons'])}", ""]
+        votes = res.decision.get("votes")
+        lines += [f"**3. Decision.** {_md(res.decision['reasons'])}"
+                  + (f" (independent votes: {', '.join(f'{k} {v}' for k, v in votes.items())}"
+                     + ("; no majority, flagged unstable" if res.decision.get("unstable") else "") + ")" if votes else ""), ""]
         lines += [f"- Not {_md(k)}: {_md(v)}" for k, v in res.decision.get("why_not", {}).items()]
         if res.decision.get("risks"):
             lines.append(f"- Risks: {_md(res.decision['risks'])}")
@@ -83,7 +88,8 @@ def _agent_section(patch: Patch) -> list[str]:
         steps = [s for s in res.steps if s.phase == p]
         if steps:
             lines.append(f"*{PHASE_TITLE[p]}*")
-            lines += [f"- #{s.n} {'' if s.ok else '(refused) '}{_md(s.summary)}" for s in steps]
+            lines += [f"- #{s.n} {'' if s.ok else '(refused) '}{_md(s.summary)}"
+                      + (f" — *{_md(s.reason)}*" if getattr(s, "reason", "") else "") for s in steps]
     return lines + ["", "</details>", ""]
 
 
