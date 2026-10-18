@@ -201,6 +201,9 @@ def _run_investigation(job: dict, req: dict) -> None:
 
 def _run_agent(job: dict, req: dict, clients, repo: Path, goal: dict) -> None:
     """The agentic mode: the AI makes the AWS calls, researches, decides, implements and opens the MR."""
+    import importlib
+    from .. import agent as _agent_mod
+    importlib.reload(_agent_mod)   # pick up agent changes without restarting the console (tokens stay in memory)
     from ..agent import PHASE_TITLE, Agent, open_mr, to_json
     goal = {k: v for k, v in goal.items() if k != "since_hours"}
     has_repo = (repo / "nextflow.config").is_file()
