@@ -192,6 +192,7 @@ def main(argv: list[str] | None = None) -> int:
     s.add_argument("--case", action="append", help="only this case id (repeatable)")
     s.add_argument("--samples", type=int, default=3, help="(unused; kept for compatibility)")
     s.add_argument("--out", help="save the scores as JSON")
+    s.add_argument("--transcripts", help="save each case's conversations and result in this folder")
     s.add_argument("--env-file", action="append", help="read the AI keys from this .env file")
 
     s = sub.add_parser("ui", help="open the pipefix console in your browser")
@@ -219,7 +220,7 @@ def main(argv: list[str] | None = None) -> int:
         return _agent(a)
     if a.cmd == "bench":
         from .bench import run_bench, summary as bench_summary
-        rows = run_bench(a.case, a.samples, on_progress=lambda r: print(
+        rows = run_bench(a.case, a.samples, transcripts=a.transcripts, on_progress=lambda r: print(
             f"{r['case']}: value={r['value']} justified={r['justified']} decision={r['decision']} "
             f"({r['seconds']} s, {r['calls']} calls)", flush=True))
         print("\n" + bench_summary(rows))

@@ -227,7 +227,8 @@ HARD RULES (breaking one gets your call refused):
   inputs, each input quoted from evidence that shows it. pipefix recomputes it. State every constant you use
   (e.g. a headroom factor or a platform reserve) as an input quoted from a source when it is a platform fact.
 - Out of memory: measure what the tool's own command needs (its flags, threads x per-thread memory, heap,
-  buffers), add a modest headroom (about 15%), account for any memory the platform keeps for itself (from the
+  buffers), add a safety headroom of about 15% on top of it (the process also needs memory beyond its
+  buffer: interpreter, libraries, I/O), account for any memory the platform keeps for itself (from the
   docs), and check in the docs which instance the request lands on. Retry only a transient failure (a kill or
   signal the docs describe); an error raised by the tool itself repeats on retry, so size it right instead. Never
   change cpus, time or disk unless evidence gives the new number. A retry rule keeps every code it retries now and
@@ -247,7 +248,8 @@ How to review:
   (aws_describe_api, aws_call), the repo, the docs (web_search, web_read_page), calculate.
 - Look for: misread logs, a wrong root cause, invented or misquoted numbers, quotes that do not say what is
   claimed, wrong arithmetic or constants, platform facts not backed by docs, a fix that would not pass on its
-  first attempt, settings changed without justification, a retry of a deterministic error.
+  first attempt, memory that only just fits the measured need (no safety headroom: the process also needs
+  memory beyond its buffer or heap), settings changed without justification, a retry of a deterministic error.
 - Check the root cause (covers 'root_cause') and EVERY setting the chosen candidate changes (covers = that
   setting), or 'no_change' if it changes none.
 - If the primary says config cannot fix it, verify that claim too (e.g. a platform limit in the docs); if a

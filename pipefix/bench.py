@@ -255,7 +255,8 @@ def score(c: Case, res) -> dict:
     return out
 
 
-def run_bench(case_ids: list[str] | None = None, samples: int = 0, on_progress=None) -> list[dict]:
+def run_bench(case_ids: list[str] | None = None, samples: int = 0, on_progress=None,
+              transcripts: str | None = None) -> list[dict]:
     rows = []
     for c in CASES:
         if case_ids and c.id not in case_ids:
@@ -264,10 +265,17 @@ def run_bench(case_ids: list[str] | None = None, samples: int = 0, on_progress=N
         with tempfile.TemporaryDirectory() as d:
             repo = make_repo(c, Path(d))
             goal = {"omics_run": "9001"} if c.platform == "healthomics" else {"batch_jobs": ["a1b2c3"]}
-            agent = Agent(Clients(_Aws(c).factory, region="us-east-1"), repo, goal)
+            tr = Path(transcripts) / f"{c.id}.json" if transcripts else None
+            if tr:
+                tr.parent.mkdir(parents=True, exist_ok=True)
+            agent = Agent(Clients(_Aws(c).factory, region="us-east-1"), repo, goal, transcript=tr)
             try:
                 res = agent.run()
                 row = score(c, res) | {"seconds": round(time.time() - t0)}
+                if tr:
+                    from .agent import to_json
+                    (tr.parent / f"{c.id}.result.json").write_text(json.dumps(to_json(res), default=str, indent=1),
+                                                                   encoding="utf-8")
             except Exception as ex:  # noqa: BLE001 - one broken case doesn't stop the bench
                 row = {"case": c.id, "value": False, "justified": False, "decision": False, "chosen": {},
                        "error": f"{type(ex).__name__}: {ex}"[:200], "calls": 0, "seconds": round(time.time() - t0)}
