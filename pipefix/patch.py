@@ -232,7 +232,11 @@ def _spot_fix(d: Diagnosis, tr: ProcessTrace | None, facts: dict, global_setting
 
 def _ai_fix(aifx, ai, tr: ProcessTrace | None, rule: ProcessFix | None, findings: list[Finding]) -> ProcessFix:
     fix = ProcessFix(aifx.name, dict(aifx.settings))
-    fix.notes.append(f"pipefix AI ({ai.model}): {aifx.rationale}".strip())
+    # the config comment stays short: what changes and the formula; the full reasoning is in the MR
+    title = aifx.rationale.split(": ", 1)[0].strip()
+    formulas = " ".join(re.findall(r"\[[^\]]{3,300}\]", aifx.rationale))
+    short = title if len(title) <= 160 else title[:157] + "..."
+    fix.notes.append(f"pipefix AI ({ai.model}): {short} {formulas}".strip())
     for directive in aifx.settings:
         cur = tr.effective(directive) if tr else None
         if cur:

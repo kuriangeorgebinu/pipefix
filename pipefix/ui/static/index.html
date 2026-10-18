@@ -18,8 +18,9 @@
    ------------------------------------------------------------------ */
 :root {
   --bg: #F2F4F3; --surface: #FFFFFF; --surface-2: #E9EDEB; --sunk: #F7F8F8;
-  --ink: #17202B; --ink-2: #485462; --ink-3: #7A8592; --rule: #D6DCD9; --rule-2: #C4CCC8;
+  --ink: #17202B; --ink-2: #485462; --ink-3: #5F6B78; --rule: #D6DCD9; --rule-2: #C4CCC8;
   --A: #1F9D5A; --C: #2563C9; --G: #B07800; --T: #D23B32;
+  --A-ink: #17804A; --G-ink: #8A5E00; --T-ink: #B42E26; --A-btn: #17804A; --on-accent: #FFFFFF;
   --A-wash: #E3F3EA; --C-wash: #E4ECFA; --G-wash: #FBF1DC; --T-wash: #FBE6E4;
   --focus: #2563C9;
   --sans: "Instrument Sans", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
@@ -30,16 +31,18 @@
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
     --bg: #0E1318; --surface: #151C23; --surface-2: #1D2630; --sunk: #11171D;
-    --ink: #E5EBF1; --ink-2: #A9B4C0; --ink-3: #74808C; --rule: #26313B; --rule-2: #334150;
+    --ink: #E5EBF1; --ink-2: #A9B4C0; --ink-3: #8A96A3; --rule: #26313B; --rule-2: #334150;
     --A: #3DBF78; --C: #6A9BF2; --G: #E1A52E; --T: #F06A5F;
+    --A-ink: #3DBF78; --G-ink: #E1A52E; --T-ink: #F06A5F; --A-btn: #3DBF78; --on-accent: #0E1318;
     --A-wash: #13291E; --C-wash: #152238; --G-wash: #2D2412; --T-wash: #331816;
     --focus: #6A9BF2; color-scheme: dark;
   }
 }
 :root[data-theme="dark"] {
   --bg: #0E1318; --surface: #151C23; --surface-2: #1D2630; --sunk: #11171D;
-  --ink: #E5EBF1; --ink-2: #A9B4C0; --ink-3: #74808C; --rule: #26313B; --rule-2: #334150;
+  --ink: #E5EBF1; --ink-2: #A9B4C0; --ink-3: #8A96A3; --rule: #26313B; --rule-2: #334150;
   --A: #3DBF78; --C: #6A9BF2; --G: #E1A52E; --T: #F06A5F;
+  --A-ink: #3DBF78; --G-ink: #E1A52E; --T-ink: #F06A5F; --A-btn: #3DBF78; --on-accent: #0E1318;
   --A-wash: #13291E; --C-wash: #152238; --G-wash: #2D2412; --T-wash: #331816;
   --focus: #6A9BF2; color-scheme: dark;
 }
@@ -109,7 +112,7 @@ details.more summary { cursor: pointer; }
 .btn:hover { background: var(--surface-2); }
 .btn.primary { background: var(--ink); color: var(--surface); border-color: var(--ink); }
 .btn.primary:hover { filter: brightness(1.15); }
-.btn.go { background: var(--A); border-color: var(--A); color: #fff; }
+.btn.go { background: var(--A-btn); border-color: var(--A-btn); color: var(--on-accent); }
 .btn:disabled { opacity: .45; cursor: not-allowed; }
 .run-btn { width: 100%; justify-content: center; margin-top: 20px; padding: 12px; }
 .note { font-size: 12.5px; color: var(--ink-3); margin: 10px 0 0; }
@@ -181,8 +184,8 @@ details.more summary { cursor: pointer; }
 .lane-out { font-size: 13px; text-align: right; }
 .lane-out b { display: block; font-weight: 600; }
 .lane-out small { color: var(--ink-3); }
-.lane-out.fixed b { color: var(--A); }
-.lane-out.you b { color: var(--T); }
+.lane-out.fixed b { color: var(--A-ink); }
+.lane-out.you b { color: var(--T-ink); }
 
 .track { position: relative; height: 64px; }
 .gel {
@@ -201,12 +204,12 @@ details.more summary { cursor: pointer; }
 .tag { position: absolute; font-size: 11.5px; line-height: 1; white-space: nowrap; transform: translateX(-50%); color: var(--ink-2); }
 .tag.up { top: 1px; } .tag.down { top: 50px; } .tag.down2 { top: 66px; }
 .track.tall { height: 80px; }
-.tag.peak { color: var(--T); } .tag.new { color: var(--A); font-weight: 600; } .tag.ceil { color: var(--C); } .tag.cap { color: var(--G); }
+.tag.peak { color: var(--T-ink); } .tag.new { color: var(--A-ink); font-weight: 600; } .tag.ceil { color: var(--C); } .tag.cap { color: var(--G-ink); }
 .tag.edge-r { transform: translateX(-100%); } .tag.edge-l { transform: none; }
 
 .attempts { display: flex; gap: 6px; align-items: center; height: 64px; }
 .att { height: 16px; border-radius: 4px; background: var(--T-wash); border: 1.5px solid var(--T); position: relative; flex: 1 1 0; min-width: 40px; }
-.att::after { content: "×"; position: absolute; right: -2px; top: 50%; transform: translate(50%, -50%); color: var(--T); font-weight: 700; font-size: 16px; background: var(--surface); line-height: 1; padding: 0 1px; }
+.att::after { content: "×"; position: absolute; right: -2px; top: 50%; transform: translate(50%, -50%); color: var(--T-ink); font-weight: 700; font-size: 16px; background: var(--surface); line-height: 1; padding: 0 1px; }
 .att.next { background: var(--A-wash); border: 1.5px dashed var(--A); flex: 1.2 1 0; }
 .att.next::after { content: none; }
 .att-caption { font-size: 12px; color: var(--ink-2); margin-top: 4px; }
@@ -277,7 +280,7 @@ details.more summary { cursor: pointer; }
 .rung.now { box-shadow: inset 3px 0 0 var(--ink-2); }
 .rung.next { background: var(--A-wash); box-shadow: inset 3px 0 0 var(--A); }
 .rung .state { font-size: 11.5px; color: var(--ink-2); grid-column: 2 / -1; margin-top: -6px; }
-.rung.next .state { color: var(--A); font-weight: 600; }
+.rung.next .state { color: var(--A-ink); font-weight: 600; }
 
 .log { background: var(--sunk); border: 1px solid var(--rule); border-radius: 10px; padding: 14px 16px; overflow: auto; max-height: 340px; margin: 0; line-height: 1.6; white-space: pre-wrap; overflow-wrap: anywhere; }
 .log .hit { background: var(--T-wash); color: var(--ink); }
@@ -307,7 +310,7 @@ details.more summary { cursor: pointer; }
 .findings li { display: grid; grid-template-columns: 96px 1fr; gap: 16px; padding: 13px 0; border-bottom: 1px solid var(--rule); font-size: 14px; }
 .sev { font-size: 12.5px; font-weight: 600; display: inline-flex; align-items: center; gap: 7px; }
 .sev::before { content: ""; width: 8px; height: 8px; border-radius: 2px; background: currentColor; }
-.sev.block { color: var(--T); } .sev.warn { color: var(--G); } .sev.info { color: var(--C); }
+.sev.block { color: var(--T-ink); } .sev.warn { color: var(--G-ink); } .sev.info { color: var(--C); }
 .findings b { font-weight: 600; }
 .findings p { margin: 2px 0 0; color: var(--ink-2); }
 .denials { width: 100%; border-collapse: collapse; margin-top: 16px; font-size: 13.5px; }
@@ -346,7 +349,7 @@ dialog label { display: flex; gap: 8px; align-items: center; font-size: 14px; ma
 dialog .field { margin-top: 14px; }
 dialog .field input { border: 1px solid var(--rule-2); background: var(--sunk); border-radius: var(--r-ctl); padding: 9px 11px; width: 100%; }
 dialog .field small { color: var(--ink-3); font-size: 12.5px; }
-dialog .err { color: var(--T); font-size: 13.5px; margin: 12px 0 0; }
+dialog .err { color: var(--T-ink); font-size: 13.5px; margin: 12px 0 0; }
 dialog .scopes { font-size: 13.5px; margin: 8px 0 0; padding-left: 18px; }
 
 /* ---------- AI research ---------- */
@@ -360,20 +363,20 @@ dialog .scopes { font-size: 13.5px; margin: 8px 0 0; padding-left: 18px; }
 .cites li { display: grid; grid-template-columns: 26px 1fr; gap: 10px; font-size: 13.5px; }
 .cites .n { width: 22px; height: 22px; border-radius: 6px; display: grid; place-items: center; font-size: 11.5px; font-weight: 600;
   background: var(--surface-2); color: var(--ink-2); font-family: var(--mono); }
-.cites li.cited .n { background: var(--C); color: #fff; }
+.cites li.cited .n { background: var(--C); color: var(--on-accent); }
 .cites a { font-weight: 500; text-decoration: none; }
 .cites a:hover { text-decoration: underline; }
 .cites .host { color: var(--ink-3); font-size: 12px; font-family: var(--mono); }
 .cites p { margin: 2px 0 0; color: var(--ink-2); font-size: 13px; }
 .site { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .04em; margin-left: 6px; }
-.site.aws { color: var(--G); } .site.nextflow { color: var(--A); } .site.terraform { color: var(--C); }
+.site.aws { color: var(--G-ink); } .site.nextflow { color: var(--A-ink); } .site.terraform { color: var(--C); }
 .aibox { margin-top: 18px; border: 1px solid color-mix(in srgb, var(--C) 40%, var(--rule)); border-radius: var(--r-panel); background: var(--surface); padding: 18px 20px; }
 .aibox h3 { font-size: 15px; font-weight: 600; display: flex; gap: 10px; align-items: center; }
 .aibox blockquote { margin: 12px 0 0; padding: 0 0 0 12px; border-left: 3px solid var(--C); color: var(--ink); font-size: 14.5px; }
 .aibox h4 { font-size: 13px; font-weight: 600; margin: 18px 0 0; color: var(--ink-2); }
 .aibox ul.plain { margin: 8px 0 0; padding-left: 18px; font-size: 13.5px; color: var(--ink-2); }
 .aibox ul.plain li + li { margin-top: 4px; }
-.rej { color: var(--T); }
+.rej { color: var(--T-ink); }
 .quote { margin: 6px 0 0; padding: 8px 12px; border-left: 3px solid var(--C); background: var(--C-wash); border-radius: 0 8px 8px 0;
   font-size: 13.5px; color: var(--ink); }
 .quote .for { display: block; font-size: 11.5px; color: var(--ink-3); font-family: var(--mono); margin-bottom: 3px; }
@@ -389,12 +392,12 @@ dialog .scopes { font-size: 13.5px; margin: 8px 0 0; padding-left: 18px; }
 .agent-steps .ph.stop { border-color: var(--T); box-shadow: inset 0 3px 0 var(--T); }
 .cands { width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 13.5px; }
 .cands th { text-align: left; font-weight: 500; color: var(--ink-3); font-size: 12.5px; padding: 6px 10px 6px 0; border-bottom: 1px solid var(--rule); }
-.cands td { padding: 10px 10px 10px 0; border-bottom: 1px solid var(--rule); vertical-align: top; overflow-wrap: anywhere; }
+.cands td { padding: 10px 10px 10px 0; border-bottom: 1px solid var(--rule); vertical-align: top; overflow-wrap: break-word; }
 .cands tr.chosen td { background: var(--A-wash); }
 .steplog { list-style: none; margin: 8px 0 0; padding: 0; font-size: 13px; font-family: var(--mono); }
 .steplog li { padding: 3px 0; color: var(--ink-2); overflow-wrap: anywhere; }
-.steplog li.aws::before { content: "AWS "; color: var(--G); font-weight: 600; }
-.steplog li.no { color: var(--T); }
+.steplog li.aws::before { content: "AWS "; color: var(--G-ink); font-weight: 600; }
+.steplog li.no { color: var(--T-ink); }
 @media (max-width: 860px) { .agent-steps { grid-template-columns: 1fr 1fr; } }
 
 /* ---------- agent reasoning ---------- */
@@ -431,22 +434,22 @@ dialog .scopes { font-size: 13.5px; margin: 8px 0 0; padding-left: 18px; }
 .ev.call .num { font-family: var(--mono); font-size: 11.5px; color: var(--ink-3); }
 .ev.call code.tool { font-size: 12.5px; font-weight: 500; color: var(--ink); }
 .ev.call .kind { font-size: 10.5px; font-weight: 700; letter-spacing: .05em; border-radius: 4px; padding: 1px 6px; }
-.kind.aws { background: var(--G-wash); color: var(--G); } .kind.fact { background: var(--A-wash); color: var(--A); }
+.kind.aws { background: var(--G-wash); color: var(--G-ink); } .kind.fact { background: var(--A-wash); color: var(--A-ink); }
 .kind.web { background: var(--C-wash); color: var(--C); } .kind.repo { background: var(--surface-2); color: var(--ink-2); }
 .kind.finish { background: var(--ink); color: var(--surface); }
 .ev.call .args { font-family: var(--mono); font-size: 11.5px; color: var(--ink-3); overflow-wrap: anywhere; }
 .ev.call .why { margin: 4px 0 0; color: var(--ink); }
 .ev.call .why b { font-weight: 600; color: var(--ink-3); font-size: 11.5px; text-transform: uppercase; letter-spacing: .04em; margin-right: 6px; }
 .ev.call details { margin-top: 6px; }
-.ev.call details summary { cursor: pointer; font-size: 12px; color: var(--A); font-weight: 500; }
+.ev.call details summary { cursor: pointer; font-size: 12px; color: var(--A-ink); font-weight: 500; }
 .ev.call details pre { margin: 6px 0 0; font-size: 11.5px; white-space: pre-wrap; overflow-wrap: anywhere; color: var(--ink-2); max-height: 220px; overflow: auto; }
-.ev.call .refused { margin-top: 6px; font-size: 12.5px; color: var(--T); }
+.ev.call .refused { margin-top: 6px; font-size: 12.5px; color: var(--T-ink); }
 .ev.call.no { border-color: color-mix(in srgb, var(--T) 45%, var(--rule)); }
 .ev.call.pending details, .ev.call.pending .refused { display: none; }
 .ev.call.pending .head::after { content: "running"; font-size: 11px; color: var(--C); margin-left: auto; }
 .ev.vote { font-size: 13px; color: var(--ink-2); padding: 6px 10px; border-radius: 8px; background: var(--C-wash); }
 .who { font-size: 10.5px; font-weight: 700; letter-spacing: .03em; border-radius: 999px; padding: 1px 8px; border: 1px solid currentColor; white-space: nowrap; }
-.who.primary { color: var(--A); } .who.aws_expert { color: var(--G); } .who.nextflow_expert { color: var(--C); }
+.who.primary { color: var(--A-ink); } .who.aws_expert { color: var(--G-ink); } .who.nextflow_expert { color: var(--C); }
 .ev.thought .who { margin-right: 6px; }
 .ev.thought.aws_expert { border-left-color: var(--G); } .ev.thought.nextflow_expert { border-left-color: var(--C); }
 .ev.call.aws_expert { border-left: 3px solid var(--G); } .ev.call.nextflow_expert { border-left: 3px solid var(--C); }
@@ -457,16 +460,121 @@ dialog .scopes { font-size: 13.5px; margin: 8px 0 0; padding-left: 18px; }
 .reviews { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 10px; }
 .reviews .rv { border: 1px solid var(--rule); border-radius: 10px; padding: 10px 12px; background: var(--sunk); font-size: 13px; }
 .reviews .rv ul { margin: 6px 0 0; padding-left: 18px; } .reviews .rv li { margin: 4px 0; }
-.f-confirmed { color: var(--A); font-weight: 600; } .f-wrong, .f-unsupported { color: var(--T); font-weight: 600; }
+.f-confirmed { color: var(--A-ink); font-weight: 600; } .f-wrong, .f-unsupported { color: var(--T-ink); font-weight: 600; }
 @media (max-width: 860px) { .reviews { grid-template-columns: 1fr; } }
-.ev.stop { font-size: 13px; color: var(--T); padding: 6px 10px; border-radius: 8px; background: var(--T-wash); }
+.ev.stop { font-size: 13px; color: var(--T-ink); padding: 6px 10px; border-radius: 8px; background: var(--T-wash); }
 .typing { display: flex; align-items: center; gap: 8px; padding: 10px 16px 14px; color: var(--ink-3); font-size: 13px; }
 .typing i { width: 6px; height: 6px; border-radius: 50%; background: var(--ink-3); animation: dot 1.2s infinite; }
 .typing i:nth-child(2) { animation-delay: .2s; } .typing i:nth-child(3) { animation-delay: .4s; }
 @keyframes dot { 0%, 80%, 100% { opacity: .2; } 40% { opacity: 1; } }
-.deriv { display: block; font-family: var(--mono); font-size: 11.5px; color: var(--A); margin-top: 3px; }
+.deriv { display: block; font-family: var(--mono); font-size: 11.5px; color: var(--A-ink); margin-top: 3px; }
 @media (prefers-reduced-motion: reduce) { .rail5 li.active::after, .typing i, .running .spark path { animation: none; } }
 @media (max-width: 860px) { .rail5 { grid-template-columns: 1fr 1fr; } }
+
+/* ---------- result page (answer first) ---------- */
+.skip { position: absolute; left: 12px; top: -60px; z-index: 20; background: var(--ink); color: var(--surface); padding: 10px 14px; border-radius: 8px; font-weight: 600; text-decoration: none; }
+.skip:focus { top: 10px; }
+.answer { margin-top: 4px; border: 1px solid var(--rule); border-left: 4px solid var(--A); border-radius: var(--r-panel); background: var(--surface); padding: 20px 24px; }
+.answer .cause-line { margin: 0; font-size: 15px; color: var(--ink); max-width: 80ch; }
+.answer .cause-line b, .answer .next b { display: block; font-size: 12px; font-weight: 600; letter-spacing: .05em; text-transform: uppercase; color: var(--ink-3); margin-bottom: 2px; }
+.changes { list-style: none; margin: 16px 0 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.changes li { font-size: 19px; font-weight: 600; display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 10px; }
+.changes .dir { font-family: var(--mono); font-size: 14px; font-weight: 500; color: var(--ink-2); }
+.changes .from { color: var(--ink-3); font-weight: 500; text-decoration: line-through; text-decoration-color: var(--rule-2); }
+.changes .to { color: var(--A-ink); }
+.nofix { margin: 14px 0 0; font-weight: 600; }
+.chips { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; }
+.chip { font-size: 12.5px; font-weight: 500; padding: 3px 10px; border-radius: 999px; background: var(--surface-2); color: var(--ink-2); }
+.chip.ok { background: var(--A-wash); color: var(--A-ink); }
+.chip.bad { background: var(--T-wash); color: var(--T-ink); }
+.answer-foot { display: flex; flex-wrap: wrap; gap: 18px 28px; align-items: flex-start; margin-top: 18px; padding-top: 16px; border-top: 1px solid var(--rule); }
+.answer-foot .btn { text-decoration: none; }
+.next ol { margin: 0; padding-left: 20px; font-size: 14px; color: var(--ink); }
+.next li + li { margin-top: 2px; }
+.evsrc { display: inline-block; font-family: var(--mono); font-size: 11.5px; color: var(--ink-3); margin-right: 8px; white-space: nowrap; }
+.evidence li span:last-child { overflow-wrap: anywhere; }
+.section h3 { font-size: 15px; font-weight: 600; margin: 20px 0 8px; }
+.formula { border: 1px solid var(--rule); border-radius: 10px; background: var(--surface); padding: 12px 16px; }
+.formula > code { font-size: 13.5px; color: var(--ink); overflow-wrap: anywhere; }
+.formula ul { margin: 8px 0 0; padding-left: 18px; font-size: 13.5px; color: var(--ink-2); }
+.formula li + li { margin-top: 6px; }
+.formula q { display: block; color: var(--ink-2); font-style: italic; margin-top: 2px; }
+.from-ev { color: var(--ink-2); }
+.verdicts { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; font-size: 14px; }
+.verdicts li { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+b.ok { color: var(--A-ink); } b.bad { color: var(--T-ink); }
+details.more-d { margin-top: 18px; border-top: 1px solid var(--rule); padding-top: 12px; font-size: 14px; }
+details.more-d > summary { cursor: pointer; font-weight: 600; color: var(--ink); }
+details.more-d p { color: var(--ink-2); max-width: 80ch; }
+.alts { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 10px; }
+.alts li { border: 1px solid var(--rule); border-radius: 10px; padding: 10px 14px; background: var(--surface); }
+.alts p { margin: 4px 0 0; font-size: 13.5px; }
+.round { margin-top: 12px; }
+.round-h { font-size: 13px; color: var(--ink-2); margin: 0; }
+.reviews .rv p { margin: 2px 0 0; font-size: 13px; }
+.reviews .rv .ev-q { color: var(--ink-3); font-size: 12.5px; overflow-wrap: anywhere; }
+.reviews .cov { font-family: var(--mono); font-size: 11.5px; color: var(--ink-3); }
+.resp { font-size: 13.5px; margin: 10px 0 0; }
+.scroll-x { overflow-x: auto; }
+.audit-s > h2 { font-size: 17px; }
+details.agentlog { margin-top: 14px; border: 1px solid var(--rule); border-radius: var(--r-panel); background: var(--surface); }
+details.agentlog > summary { cursor: pointer; padding: 14px 18px; display: flex; flex-wrap: wrap; gap: 4px 14px; align-items: baseline; }
+details.agentlog > summary .sum-t { font-weight: 600; }
+details.agentlog > summary .sum-d { font-size: 13px; color: var(--ink-3); }
+.log-tools { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; padding: 0 18px 12px; border-bottom: 1px solid var(--rule); }
+.fbtn { border: 1px solid var(--rule-2); background: var(--surface); border-radius: 999px; padding: 4px 12px; font-size: 13px; cursor: pointer; }
+.fbtn[aria-pressed="true"] { background: var(--ink); color: var(--surface); border-color: var(--ink); }
+.tgl { font-size: 13px; display: inline-flex; gap: 6px; align-items: center; margin-left: auto; color: var(--ink-2); }
+.lglist { list-style: none; margin: 0; padding: 8px 18px 18px; }
+.agentlog[data-filter="primary"] .lglist > li[data-ag]:not([data-ag="primary"]),
+.agentlog[data-filter="aws_expert"] .lglist > li[data-ag]:not([data-ag="aws_expert"]),
+.agentlog[data-filter="nextflow_expert"] .lglist > li[data-ag]:not([data-ag="nextflow_expert"]),
+.agentlog[data-filter]:not([data-filter="all"]) .handoff,
+.agentlog.no-thoughts .lg.thought { display: none; }
+.lg-phase h3 { margin: 18px 0 6px; font-size: 12px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--ink-3); display: flex; gap: 10px; align-items: center; }
+.lg-phase h3::after { content: ""; flex: 1; height: 1px; background: var(--rule); }
+.lg-round { margin: 12px 0 4px; font-size: 13px; font-weight: 600; color: var(--ink-2); }
+.lg { display: grid; grid-template-columns: 132px minmax(0, 1fr); gap: 12px; padding: 8px 0; border-top: 1px dashed var(--rule); }
+.lg-who.cont .av { opacity: .55; }
+.lg-who { display: flex; align-items: flex-start; gap: 8px; font-size: 12.5px; font-weight: 600; color: var(--ink-2); padding-top: 2px; }
+.av { flex: none; min-width: 28px; height: 22px; padding: 0 5px; border-radius: 6px; display: inline-grid; place-items: center; font-size: 10.5px; font-weight: 700; letter-spacing: .02em; }
+.av.primary { background: var(--A-wash); color: var(--A-ink); box-shadow: inset 0 0 0 1px var(--A-ink); }
+.av.aws_expert { background: var(--G-wash); color: var(--G-ink); box-shadow: inset 0 0 0 1px var(--G-ink); }
+.av.nextflow_expert { background: var(--C-wash); color: var(--C); box-shadow: inset 0 0 0 1px var(--C); }
+.lg-body { min-width: 0; font-size: 13.5px; }
+.lg-body p { margin: 2px 0 0; }
+.lg-k { font-size: 11.5px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; color: var(--ink-3); margin-right: 4px; }
+.lg.thought .lg-body p { color: var(--ink-2); white-space: pre-wrap; }
+.call-h { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.call-h .num { font-family: var(--mono); font-size: 12px; color: var(--ink-3); }
+.call-h .tool { font-size: 13px; font-weight: 500; color: var(--ink); }
+.call-h .run { font-size: 12px; color: var(--C); }
+.kind { font-size: 10.5px; font-weight: 700; letter-spacing: .05em; border-radius: 4px; padding: 1px 6px; }
+.kind.aws { background: var(--G-wash); color: var(--G-ink); } .kind.fact { background: var(--A-wash); color: var(--A-ink); }
+.kind.web { background: var(--C-wash); color: var(--C); } .kind.repo { background: var(--surface-2); color: var(--ink-2); }
+.kind.finish { background: var(--ink); color: var(--surface); }
+.lg .args { display: block; margin-top: 4px; font-size: 12px; color: var(--ink-2); white-space: pre-wrap; overflow-wrap: anywhere; }
+.lg .why { color: var(--ink); }
+.lg .res { margin-top: 4px; }
+.lg .res summary { cursor: pointer; font-size: 12.5px; color: var(--C); }
+.lg .res pre { margin: 6px 0 0; font-size: 12px; white-space: pre-wrap; overflow-wrap: anywhere; color: var(--ink-2); background: var(--sunk); border-radius: 8px; padding: 8px 10px; max-height: 260px; overflow: auto; }
+.lg .refused { color: var(--T-ink); background: var(--T-wash); border-radius: 8px; padding: 6px 10px; margin-top: 6px; }
+.lg.verdict .lg-body { border-radius: 8px; padding: 8px 12px; }
+.lg.verdict.ok .lg-body { background: var(--A-wash); } .lg.verdict.bad .lg-body { background: var(--T-wash); }
+.handoff { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; margin: 10px 0; padding: 8px 12px; border-radius: 10px; background: var(--surface-2); font-size: 13px; }
+.handoff .ho { display: inline-flex; align-items: center; gap: 6px; font-weight: 600; }
+.handoff .arrow { font-size: 16px; color: var(--ink-2); }
+.handoff .ho-why { color: var(--ink-2); }
+.lg-note { margin: 10px 0; padding: 8px 12px; border-radius: 10px; font-size: 13.5px; font-weight: 600; }
+.lg-note.ok { background: var(--A-wash); color: var(--A-ink); } .lg-note.bad { background: var(--T-wash); color: var(--T-ink); }
+#ar-tl .lglist { padding: 0; }
+@media (max-width: 860px) {
+  .has-result main { order: -1; }
+  .lg { grid-template-columns: 1fr; gap: 4px; }
+  .answer { padding: 16px; }
+  .changes li { font-size: 17px; }
+  .tgl { margin-left: 0; }
+}
 
 /* ---------- responsive ---------- */
 @media (max-width: 1080px) {
@@ -492,6 +600,7 @@ dialog .scopes { font-size: 13.5px; margin: 8px 0 0; padding-left: 18px; }
 </style>
 </head>
 <body>
+<a class="skip" href="#main">Skip to results</a>
 <header class="top">
   <a class="brand" href="/" aria-label="pipefix console home">
     <svg viewBox="0 0 34 22" aria-hidden="true"><path d="M1 21 Q5 1 9 21" fill="none" stroke="var(--A)" stroke-width="2.4" stroke-linecap="round"/><path d="M8 21 Q12 8 16 21" fill="none" stroke="var(--C)" stroke-width="2.4" stroke-linecap="round"/><path d="M15 21 Q19 12 23 21" fill="none" stroke="var(--G)" stroke-width="2.4" stroke-linecap="round"/><path d="M22 21 Q27 3 32 21" fill="none" stroke="var(--T)" stroke-width="2.4" stroke-linecap="round"/></svg>
@@ -567,7 +676,8 @@ dialog .scopes { font-size: 13.5px; margin: 8px 0 0; padding-left: 18px; }
     </section>
   </aside>
 
-  <main id="main" tabindex="-1" aria-live="polite"></main>
+  <main id="main" tabindex="-1"></main>
+  <div id="announce" class="sr" role="status" aria-live="polite"></div>
 </div>
 
 <dialog id="mr-dialog" aria-labelledby="mr-h">
@@ -922,31 +1032,60 @@ function toolKind(t) {
     t.startsWith("finish_") ? ["finish", "CHECKPOINT"] : ["repo", "STEP"];
 }
 const WHO = { primary: "Primary", aws_expert: "AWS expert", nextflow_expert: "Nextflow expert" };
+const WHO_SHORT = { primary: "P", aws_expert: "AWS", nextflow_expert: "NF" };
+const WHO_ROLE = { primary: "investigates and proposes the fix", aws_expert: "fact-checks the AWS side", nextflow_expert: "fact-checks the Nextflow side" };
 const who = a => `<span class="who ${esc(a || "primary")}">${esc(WHO[a] || a || "Primary")}</span>`;
-function argText(a) {
+const avatar = a => `<span class="av ${esc(a || "primary")}" aria-hidden="true">${esc(WHO_SHORT[a] || "?")}</span>`;
+function argText(tool, a) {
   if (!a) return "";
-  return Object.entries(a).map(([k, v]) => `${k}=${typeof v === "object" ? JSON.stringify(v) : v}`).join("  ").slice(0, 220);
+  if (tool === "aws_call") return `${a.service || ""}.${a.operation || ""}(${a.params ? JSON.stringify(a.params) : ""})`;
+  return Object.entries(a).map(([k, v]) => `${k}=${typeof v === "object" ? JSON.stringify(v) : v}`).join("  ");
 }
-function tlHTML(events) {
-  // calls and their results are paired by call number
-  const results = {};
+function handoffWhy(from, to, verdict) {
+  if (from === "primary") return "hands over the proposal for review";
+  if (to === "primary") return verdict === "object" ? "sends back objections to answer" : "returns its verdict";
+  return "the next expert reviews it independently";
+}
+function logHTML(events) {
+  const results = {}, verdict = {};
   for (const e of events) if (e.kind === "result") results[e.n] = e;
-  return events.map(e => {
-    if (e.kind === "phase") return `<div class="ev-phase">${esc(e.text)}</div>`;
-    if (e.kind === "thought") return `<div class="ev thought ${esc(e.agent || "")}"><span class="lbl">${who(e.agent)}Thinking</span>${esc(e.text)}</div>`;
-    if (e.kind === "vote") return `<div class="ev vote">${esc(e.text)}</div>`;
-    if (e.kind === "round") return `<div class="ev-round">${esc(e.text)}</div>`;
-    if (e.kind === "review") return `<div class="ev review ${e.verdict === "agree" ? "agree" : ""}">${who(e.agent)} ${esc(e.text)}</div>`;
-    if (e.kind === "agree") return `<div class="ev agree">${esc(e.text)}</div>`;
-    if (e.kind === "stop") return `<div class="ev stop">${esc(e.text)}</div>`;
-    if (e.kind !== "call") return "";
-    const r = results[e.n], [k, label] = toolKind(e.tool);
-    const state = !r ? "pending" : r.ok ? "" : "no";
-    return `<div class="ev call ${state} ${esc(e.agent || "")}"><div class="head">${who(e.agent)}<span class="num">#${e.n}</span><span class="kind ${k}">${label}</span><code class="tool">${esc(e.tool)}</code><span class="args">${esc(argText(e.args))}</span></div>
-      <p class="why"><b>Why</b>${esc(e.text)}</p>
-      ${r ? (r.ok ? `<details><summary>Result</summary><pre>${esc(r.text)}</pre></details>` : `<div class="refused">${esc(r.text)}</div>`) : ""}</div>`;
-  }).join("");
+  let cur = null;
+  const out = [];
+  for (const e of events) {
+    if (e.kind === "phase") { out.push(`<li class="lg-phase"><h3>${esc(e.text)}</h3></li>`); continue; }
+    if (e.kind === "round") { out.push(`<li class="lg-round">${esc(e.text)}</li>`); continue; }
+    if (e.kind === "result" || e.kind === "vote") continue;
+    const ag = e.agent || "primary";
+    if (["thought", "call", "review"].includes(e.kind) && ag !== cur) {
+      if (cur) out.push(`<li class="handoff"><span class="ho">${avatar(cur)}<span>${esc(WHO[cur])}</span><span class="arrow" aria-hidden="true">→</span><span class="sr"> hands off to </span>${avatar(ag)}<span>${esc(WHO[ag])}</span></span><span class="ho-why">${esc(handoffWhy(cur, ag, verdict[cur]))}</span></li>`);
+      cur = ag;
+    }
+    // the agent's name is written once per turn; following rows keep the badge (and the name for screen readers)
+    const first = e.kind === "review" || out.length === 0 || !out[out.length - 1].includes(`data-ag="${ag}"`);
+    const head = first ? `<div class="lg-who">${avatar(ag)}<span class="lg-name">${esc(WHO[ag] || ag)}</span></div>`
+                       : `<div class="lg-who cont">${avatar(ag)}<span class="sr">${esc(WHO[ag] || ag)}</span></div>`;
+    if (e.kind === "thought") {
+      out.push(`<li class="lg thought" data-ag="${esc(ag)}">${head}<div class="lg-body"><span class="lg-k">Thinking</span><p>${esc(e.text)}</p></div></li>`);
+    } else if (e.kind === "call") {
+      const r = results[e.n], [k, label] = toolKind(e.tool), state = !r ? "pending" : r.ok ? "" : "no";
+      out.push(`<li class="lg call ${state}" data-ag="${esc(ag)}">${head}<div class="lg-body">
+        <div class="call-h"><span class="num">#${e.n}</span><span class="kind ${k}">${label}</span><code class="tool">${esc(e.tool)}</code>${!r ? '<span class="run">running</span>' : ""}</div>
+        ${e.args && Object.keys(e.args).length && !e.args["..."] ? `<code class="args">${esc(argText(e.tool, e.args))}</code>` : ""}
+        <p class="why"><span class="lg-k">Why</span> ${esc(e.text)}</p>
+        ${r ? (r.ok ? `<details class="res"><summary>Result${r.full ? ` (first ${r.text.length} of ${r.full} characters)` : ""}</summary><pre tabindex="0">${esc(r.text)}</pre></details>` : `<p class="refused"><b>Refused by pipefix:</b> ${esc(r.text.replace(/^REFUSED:\s*/, ""))}</p>`) : ""}
+      </div></li>`);
+    } else if (e.kind === "review") {
+      verdict[ag] = e.verdict;
+      out.push(`<li class="lg verdict ${e.verdict === "agree" ? "ok" : "bad"}" data-ag="${esc(ag)}">${head}<div class="lg-body"><span class="lg-k">${e.verdict === "agree" ? "Verdict: agreed" : "Verdict: objected"}</span><p>${esc(e.text.replace(/^[^:]+:\s*(AGREE|OBJECT)\s*(—\s*)?/, ""))}</p></div></li>`);
+    } else if (e.kind === "agree") {
+      out.push(`<li class="lg-note ok">${esc(e.text)}</li>`);
+    } else if (e.kind === "stop") {
+      out.push(`<li class="lg-note bad">${esc(e.text)}</li>`);
+    }
+  }
+  return `<ol class="lglist">${out.join("")}</ol>`;
 }
+
 function railHTML(events, status, error) {
   const titles = ["1. Debug", "2. Research solutions", "3. Pick the best solution", "3b. Expert review", "4. Implement it", "5. Open the merge request"];
   const seen = events.filter(e => e.kind === "phase").map(e => e.text);
@@ -966,11 +1105,11 @@ function showAgentProgress(job) {
       <div class="sub"><span id="ar-elapsed"></span><span>${who("primary")} proposes · ${who("aws_expert")} ${who("nextflow_expert")} fact-check · read-only on AWS</span></div>
       <div id="ar-rail"></div>
       <section class="think running" aria-label="Agent reasoning"><header>${SPARK}<h2>Agent reasoning</h2><span class="count" id="ar-count"></span></header>
-        <div class="tl" id="ar-tl" aria-live="polite"></div><div class="typing" id="ar-typing"><i></i><i></i><i></i><span>Thinking</span></div></section></div>`;
+        <div class="tl" id="ar-tl" aria-live="off"></div><div class="typing" id="ar-typing"><i></i><i></i><i></i><span>Thinking</span></div></section></div>`;
     box = $("#agentrun"); box.dataset.start = Date.now();
   }
   const tl = $("#ar-tl"), stick = tl.scrollHeight - tl.scrollTop - tl.clientHeight < 80;
-  tl.innerHTML = tlHTML(TRACE.events);
+  tl.innerHTML = logHTML(TRACE.events);
   $("#ar-rail").innerHTML = railHTML(TRACE.events, job.status, job.error);
   const n = TRACE.events.filter(e => e.kind === "call").length;
   $("#ar-count").textContent = `${n} call${n === 1 ? "" : "s"}`;
@@ -1004,34 +1143,27 @@ function render(job) {
   JOB = job; const r = job.result; SEL = Math.min(SEL, Math.max(0, r.failures.length - 1));
   const n = r.failures.length, fixed = r.failures.filter(f => f.fixed).length, you = n - fixed;
   const plat = { "aws-batch": "AWS Batch", healthomics: "AWS HealthOmics", files: "Nextflow files" }[r.platform] || r.platform;
+  const stopped = job.status === "stopped" || !!r.agent?.error;
   const headline = n === 0 ? "Nothing failed in this window." :
-    `${n} ${n === 1 ? "task" : "tasks"} failed. ` + (fixed && you ? `${fixed} ${fixed === 1 ? "has" : "have"} a config fix; ${you} ${you === 1 ? "needs" : "need"} you.`
+    `${n} ${n === 1 ? "task" : "tasks"} failed. ` + (stopped && !r.diff ? "No change was made." : fixed && you ? `${fixed} ${fixed === 1 ? "has" : "have"} a config fix; ${you} ${you === 1 ? "needs" : "need"} you.`
       : fixed ? (n === 1 ? "It has a config fix." : "All have a config fix.") : (n === 1 ? "It needs you; config can't fix it." : "They need you; config can't fix them."));
+  document.body.classList.add("has-result");
   main.innerHTML = `
     <header class="verdict">
-      <div class="runref"><span><b>${esc(plat)}</b></span><span>${esc(r.run)}</span>${r.nextflow ? `<span>Nextflow ${esc(r.nextflow)}</span>` : ""}${r.repo ? `<span class="mono">${esc(r.repo)}</span>` : ""}</div>
-      <h1>${esc(headline)}</h1>
-      ${n ? `<div class="key" aria-hidden="true">
-        <span><i style="background:var(--T)"></i>Peak memory used</span>
-        <span><i style="background:var(--ink-2)"></i>Requested</span>
-        <span><i style="background:var(--A)"></i>After the fix</span>
-        <span><i style="background:none;border-top:2px dashed var(--C);height:0"></i>Largest instance in the queue</span>
-        <span><i style="background:none;border-top:2px dashed var(--G);height:0"></i>Pipeline cap</span></div>` : ""}
+      <div class="runref"><span><b>${esc(plat)}</b></span><span>${esc(r.run)}</span>${r.nextflow ? `<span>Nextflow ${esc(r.nextflow)}</span>` : ""}</div>
+      <h1 id="result-h" tabindex="-1">${esc(headline)}</h1>
     </header>
-    ${n ? `<section class="lanes fresh" id="lanes" aria-label="Failed tasks">${r.failures.map(lane).join("")}</section>` : ""}
-    ${n ? `<section class="section" id="detail" aria-live="polite"></section>` : ""}
-    ${agentBlock(r)}
+    ${answerCard(r, job)}
+    ${n ? `<section class="section" aria-labelledby="lanes-h"><h2 id="lanes-h" class="sr">Failed tasks</h2>${legendHTML(r)}
+      <div class="lanes fresh" id="lanes">${r.failures.map(lane).join("")}</div></section>` : ""}
+    ${n ? `<section class="section" id="detail"></section>` : ""}
     <section class="section" aria-labelledby="chg-h">
-      <h2 id="chg-h">Proposed change</h2>
+      <h2 id="chg-h">The change</h2>
       ${changeBlock(r, job)}
     </section>
-    ${aiBlock(r)}
+    ${howWeKnow(r)}
     ${platformBlock(r)}
-    <details class="audit"><summary>What pipefix read: ${r.calls.reduce((a, c) => a + c.count, 0)} read-only AWS calls</summary>
-      <div class="calls">${r.calls.map(c => `<code>${esc(c.call)}${c.count > 1 ? " ×" + c.count : ""}</code>`).join("")}</div>
-      ${r.errors.length ? `<p>Not readable or not found: ${r.errors.map(esc).join(", ")}.</p>` : ""}
-      ${r.config_files.length ? `<p>Config files traced: ${r.config_files.map(f => `<code>${esc(f)}</code>`).join(" ")}</p>` : ""}
-    </details>`;
+    ${auditBlock(r)}`;
   if (n) {
     declutter();
     $("#lanes").addEventListener("click", e => { const b = e.target.closest(".lane"); if (b) select(+b.dataset.i); });
@@ -1039,6 +1171,167 @@ function render(job) {
     setTimeout(() => $("#lanes")?.classList.remove("fresh"), 1200);
   }
   wireActions(job);
+  wireLog();
+  announce(`Results ready. ${headline}`);
+  window.scrollTo(0, 0);
+  $("#result-h").focus({ preventScroll: true });
+}
+
+/* ---------- small helpers for the result ---------- */
+function announce(t) { const a = $("#announce"); if (a) { a.textContent = ""; setTimeout(() => { a.textContent = t; }, 50); } }
+function firstSentence(t, max = 220) {
+  const s = String(t || "").replace(/\s+/g, " ").trim(); const m = s.match(/^.{20,}?[.!?](\s|$)/);
+  const out = m ? m[0].trim() : s; return out.length > max ? out.slice(0, max - 1) + "…" : out;
+}
+function pretty(directive, v) {
+  const s = String(v ?? "").trim();
+  let m;
+  if ((m = s.match(/(\d+(?:\.\d+)?)\s*\.?\s*GB/i))) return `${m[1]} GB${/task\.attempt/.test(s) ? " (grows on retry)" : ""}`;
+  if ((m = s.match(/(\d+(?:\.\d+)?)\s*\.?\s*h\b/))) return `${m[1]} h${/task\.attempt/.test(s) ? " (grows on retry)" : ""}`;
+  if (directive === "cpus" && (m = s.match(/(\d+)/))) return `${m[1]} vCPU`;
+  if (directive === "errorStrategy") { const c = s.match(/in\s+(.+?)\s*\?/); return c ? `retry exit codes ${c[1]}` : s; }
+  return s.replace(/^'|'$/g, "");
+}
+function cleanEvidence(s) {
+  // "#3 aws_call: \"cpus\": 2, \"memory\": 2" -> chip "call #3 · AWS" + "cpus: 2, memory: 2"
+  const m = String(s).match(/^#(\d+)\s+([\w_]+):\s*([\s\S]*)$/);
+  const body = (m ? m[3] : String(s).replace(/^log: /, "")).replace(/\\?"([A-Za-z_][\w]*)":\s*/g, "$1: ").replace(/\\"/g, "\"").replace(/^"|"$/g, "");
+  const tool = m ? (m[2] === "aws_call" ? "AWS" : m[2].startsWith("repo_") ? "Repo" : m[2].startsWith("web_") ? "Docs" : m[2]) : (/^log: /.test(s) ? "Log" : "");
+  return `${m ? `<span class="evsrc">call #${esc(m[1])} · ${esc(tool)}</span>` : tool ? `<span class="evsrc">${esc(tool)}</span>` : ""}<span>${ticks(body)}</span>`;
+}
+const WF_STEP = /new workflow version/i;
+
+function answerCard(r, job) {
+  const a = r.agent, fixedF = r.failures.filter(f => f.fixed);
+  const changes = fixedF.flatMap(f => Object.entries(f.fix.settings).map(([k, v]) => {
+    const was = (f.trace || []).find(t => t.directive === k && t.wins);
+    return `<li><b>${esc(f.name)}</b> <span class="dir">${esc(k)}</span> ${was ? `<span class="from">${esc(pretty(k, was.value))}</span> <span aria-hidden="true">→</span><span class="sr">changes to</span> ` : ""}<span class="to">${esc(pretty(k, v))}</span></li>`;
+  }));
+  const cause = a?.diagnosis?.root_cause ? firstSentence(a.diagnosis.root_cause, 340) : r.failures[0] ? firstSentence(r.failures[0].explanation, 340) : "";
+  const conf = r.failures.length ? Math.round(Math.max(...r.failures.map(f => f.confidence)) * 100) : null;
+  const rounds = a?.review?.rounds?.length || 0;
+  const chips = [conf != null && r.failures.length ? `<span class="chip">${conf}% confidence</span>` : "",
+    a?.review?.agreed ? `<span class="chip ok">Checked and agreed by 2 expert agents${rounds > 1 ? ` (${rounds} rounds)` : ""}</span>` : a && rounds ? `<span class="chip bad">The expert agents did not agree</span>` : "",
+    a?.decision?.lands_on ? `<span class="chip">Runs on ${esc(a.decision.lands_on.instance)}</span>` : ""].join("");
+  const mr = job.mr?.url || a?.mr_url;
+  const steps = [];
+  if (mr) steps.push(`Review and merge the <a href="${esc(mr)}" target="_blank" rel="noopener">merge request</a>.`);
+  else if (r.diff) steps.push(`Review the change below, then open a merge request.`);
+  if (r.findings.some(f => WF_STEP.test(f.title))) steps.push("After merging, publish a new HealthOmics workflow version.");
+  if (r.diff) steps.push("Rerun the pipeline.");
+  r.failures.filter(f => !f.fixed).forEach(f => steps.push(`${esc(f.name)}: ${ticks(firstSentence(f.recommendation, 180))}`));
+  return `<section class="answer" aria-labelledby="answer-h">
+    <h2 id="answer-h" class="sr">Summary</h2>
+    ${cause ? `<p class="cause-line"><b>Cause</b> ${ticks(cause)}</p>` : ""}
+    ${changes.length ? `<ul class="changes" aria-label="Setting changes">${changes.join("")}</ul>` : `<p class="nofix">No config change ${stopped(r) ? "was made" : "can fix this"}.</p>`}
+    ${chips ? `<div class="chips">${chips}</div>` : ""}
+    ${a?.error ? `<p class="result-msg err">${esc(firstSentence(a.error, 260))}</p>` : ""}
+    <div class="answer-foot">
+      ${mr ? `<a class="btn go" href="${esc(mr)}" target="_blank" rel="noopener">View merge request<span class="sr"> (opens in a new tab)</span></a>`
+           : r.diff ? `<a class="btn" href="#chg-h">See the change</a>` : ""}
+      ${steps.length ? `<div class="next"><b>Next</b><ol>${steps.map(s => `<li>${s}</li>`).join("")}</ol></div>` : ""}
+    </div>
+  </section>`;
+}
+function stopped(r) { return !!r.agent?.error; }
+
+function legendHTML(r) {
+  const has = k => r.failures.some(f => f[k] != null && (f.cls === "out_of_memory" || f.cls === "timeout"));
+  const items = [["memory_gb", "var(--ink-2)", "Requested"], ["peak_gb", "var(--T)", "Peak used"], ["new_memory_gb", "var(--A)", "After the fix"],
+                 ["ceiling_gb", "var(--C)", "Largest instance", true], ["cap_gb", "var(--G)", "Pipeline cap", true]].filter(([k]) => has(k));
+  return items.length ? `<div class="key" aria-hidden="true">${items.map(([, c, t, dash]) => `<span><i style="${dash ? `background:none;border-top:2px dashed ${c};height:0` : `background:${c}`}"></i>${t}</span>`).join("")}</div>` : "";
+}
+
+/* ---------- how we know ---------- */
+function howWeKnow(r) {
+  const a = r.agent, ai = r.ai;
+  if (!a && (!ai || ai.error)) return ai?.error ? `<section class="section"><h2>AI research</h2><p class="note">${esc(ai.error)} The fix above is pipefix's rule-based one.</p></section>` : "";
+  const srcs = ai?.sources || [];
+  const srcName = n => { const s = srcs.find(x => x.n === n); return s ? `<a href="${esc(s.url)}" target="_blank" rel="noopener">${esc(s.title || host(s.url))}</a>` : `source ${esc(n)}`; };
+  let body = "";
+  if (a) {
+    const c = a.candidates.find(x => x.id === a.decision?.chosen);
+    const derivs = Object.entries(c?.derivations || {});
+    if (derivs.length) body += `<h3>How the number was worked out</h3>` + derivs.map(([k, d]) => `
+      <div class="formula"><code>${esc(k)} = ${esc(d.formula)}</code>
+        <ul>${Object.entries(d.inputs).map(([nm, i]) => `<li><code>${esc(nm)} = ${esc(i.value)}</code> <span class="from-ev">${i.call != null ? `from the run (call #${esc(i.call)})` : i.source != null ? `from ${srcName(i.source)}` : esc(i.policy || "")}</span>${i.quote ? `<q>${esc(i.quote.length > 160 ? i.quote.slice(0, 157) + "…" : i.quote)}</q>` : ""}</li>`).join("")}</ul></div>`).join("");
+    const last = (a.review?.rounds || []).slice(-1)[0];
+    if (last) body += `<h3>Expert check</h3><ul class="verdicts">${Object.values(last.reviews).map(v => {
+      const ok = v.checks.filter(x => x.finding === "confirmed").length;
+      return `<li>${who(v.agent)} <b class="${v.verdict === "agree" ? "ok" : "bad"}">${v.verdict === "agree" ? "Agreed" : "Objected"}</b> <span>${ok} of ${v.checks.length} checks confirmed${a.review.rounds.length > 1 ? `, round ${last.round}` : ""}</span></li>`; }).join("")}</ul>`;
+    body += `<details class="more-d"><summary>Decision, alternatives and the full expert review</summary>
+      ${a.decision?.reasons ? `<h3>Why this fix</h3><p>${esc(a.decision.reasons)}</p>` : ""}
+      ${Object.keys(a.decision?.why_not || {}).length ? `<h3>Alternatives not chosen</h3><ul class="alts">${a.candidates.filter(x => x.id !== a.decision.chosen).map(x => `<li><b>${esc(x.title)}</b> ${Object.entries(x.settings).map(([k, v]) => `<code>${esc(k)} = ${esc(v)}</code>`).join(" ") || "<i>no config change</i>"}<p>${esc(a.decision.why_not[x.id] || "")}</p>${x.valid ? "" : `<p class="rej">Failed pipefix's checks: ${esc(x.problems.join("; "))}</p>`}</li>`).join("")}</ul>` : ""}
+      ${a.decision?.risks ? `<h3>Risks</h3><p>${esc(a.decision.risks)}</p>` : ""}
+      ${reviewHTML(a)}
+    </details>`;
+  } else if (ai) {
+    body += ai.summary ? `<p>${esc(ai.summary)}</p>` : "";
+    body += ai.fixes.map(f => quotesHTML(f.evidence || [])).join("");
+  }
+  const read = srcs.filter(s => s.read), cited = new Set((ai?.fixes || []).flatMap(f => f.sources));
+  if (read.length) body += `<details class="more-d"><summary>Sources read (${read.length})${srcs.length > read.length ? `, ${srcs.length - read.length} more found but not read` : ""}</summary>
+    <ol class="cites">${read.map(s => `<li class="${cited.has(s.n) ? "cited" : ""}"><span class="n">${s.n}</span><div><a href="${esc(s.url)}" target="_blank" rel="noopener noreferrer">${esc(s.title || s.url)}</a><div class="host">${esc(host(s.url))}</div></div></li>`).join("")}</ol>
+    ${ai?.queries?.length ? `<p class="note">Searches: ${ai.queries.map(q => `<code>${esc(q)}</code>`).join(" ")}</p>` : ""}</details>`;
+  return `<section class="section" aria-labelledby="know-h"><h2 id="know-h">How we know</h2>
+    <p class="lede">Every number is a formula over values quoted from the run or the docs; pipefix re-checked each quote and recomputed each formula.</p>${body}</section>`;
+}
+
+function reviewHTML(a) {
+  const rounds = a.review?.rounds || [];
+  if (!rounds.length) return "";
+  const evq = e => e.call != null ? `call #${e.call}` : `source ${e.source}`;
+  return `<h3>Expert review, round by round</h3>` + rounds.map(r => `
+    <div class="round"><p class="round-h">Round ${r.round}: candidate ${esc(r.chosen)} ${Object.entries(r.settings || {}).map(([k, v]) => `<code>${esc(k)} = ${esc(v)}</code>`).join(" ")}</p>
+    <div class="reviews">${Object.values(r.reviews).map(v => `<div class="rv">${who(v.agent)} <b class="${v.verdict === "agree" ? "ok" : "bad"}">${v.verdict === "agree" ? "Agreed" : "Objected"}</b>
+      <ul>${v.checks.map(c => `<li><span class="f-${esc(c.finding)}">${esc(c.finding)}</span> <span class="cov">${esc(c.covers)}</span> ${esc(c.claim)}<p>${esc(c.explanation)}</p>${c.evidence.length ? `<p class="ev-q">${c.evidence.slice(0, 2).map(e => `${evq(e)}: “${esc(e.quote.slice(0, 140))}”`).join(" · ")}</p>` : ""}</li>`).join("")}</ul>
+      ${v.questions?.length ? `<p><b>Questions:</b> ${v.questions.map(esc).join(" · ")}</p>` : ""}</div>`).join("")}</div>
+    ${r.response ? `<p class="resp">${who("primary")} <b>${esc(r.response.action === "revise" ? "Revised" : "Defended")}</b>: ${r.response.answers.map(x => esc(x.answer)).join(" · ")}</p>` : ""}</div>`).join("");
+}
+
+function platformBlock(r) {
+  const order = { block: 0, warn: 1 }, name = { block: "Blocker", warn: "Warning" };
+  const fs = r.findings.filter(f => f.severity !== "info").sort((a, b) => order[a.severity] - order[b.severity]);
+  if (!fs.length && !r.denials.length) return "";
+  return `<section class="section" aria-labelledby="plat-h"><h2 id="plat-h">Platform notes</h2>
+    <ul class="findings">${fs.map(f => `<li><span class="sev ${f.severity}">${name[f.severity]}</span><div><b>${ticks(f.title)}</b><p>${ticks(f.detail)}</p></div></li>`).join("")}</ul>
+    ${r.denials.length ? `<div class="scroll-x" tabindex="0" role="region" aria-label="Access denied in CloudTrail"><table class="denials"><caption class="sr">Access denied in CloudTrail during the run</caption>
+      <thead><tr><th>Denied action</th><th>Resource</th><th>Role</th><th>When</th></tr></thead>
+      <tbody>${r.denials.map(d => `<tr><td class="mono">${esc(d.source.split(".")[0])}:${esc(d.action)}</td><td class="mono">${esc(d.target)}</td><td class="mono">${esc((d.principal.split("/")[1]) || d.principal)}</td><td>${esc(d.time)}</td></tr>`).join("")}</tbody></table></div>` : ""}
+  </section>`;
+}
+
+/* ---------- behind the scenes: agent log + what pipefix read ---------- */
+function auditBlock(r) {
+  const a = r.agent, info = r.findings.filter(f => f.severity === "info" && !WF_STEP.test(f.title));
+  const nCalls = r.calls.reduce((s, c) => s + c.count, 0);
+  const counts = {}; for (const e of a?.trace || []) if (e.kind === "call") counts[e.agent || "primary"] = (counts[e.agent || "primary"] || 0) + 1;
+  return `<section class="section audit-s" aria-labelledby="audit-h"><h2 id="audit-h">Behind the scenes</h2>
+    ${a?.trace?.length ? `<details class="agentlog" id="agentlog"><summary><span class="sum-t">Agent log</span>
+        <span class="sum-d">${Object.entries(counts).map(([k, v]) => `${esc(WHO[k] || k)} ${v}`).join(" · ")} calls${a.usage ? ` · ${Math.max(1, Math.round((a.elapsed || 0) / 60))} min · ${((a.usage.prompt + a.usage.completion) / 1000).toFixed(0)}k tokens` : ""}${a.refused ? ` · ${a.refused} refused` : ""}</span></summary>
+      <div class="log-tools" role="group" aria-label="Show steps by">
+        ${[["all", "All agents"], ["primary", "Primary"], ["aws_expert", "AWS expert"], ["nextflow_expert", "Nextflow expert"]].map(([k, t], i) => `<button type="button" class="fbtn" data-f="${k}" aria-pressed="${i === 0}">${t}</button>`).join("")}
+        <label class="tgl"><input type="checkbox" id="log-thoughts" checked> Show thinking</label>
+      </div>
+      ${logHTML(a.trace)}</details>` : ""}
+    <details class="more-d"><summary>What pipefix read: ${nCalls} read-only AWS call${nCalls === 1 ? "" : "s"}</summary>
+      <div class="calls">${r.calls.map(c => `<code>${esc(c.call)}${c.count > 1 ? " ×" + c.count : ""}</code>`).join("")}</div>
+      ${r.errors.length ? `<p>Not readable or not found: ${r.errors.map(esc).join(", ")}.</p>` : ""}
+      ${r.config_files.length ? `<p>Config files traced: ${r.config_files.map(f => `<code>${esc(f)}</code>`).join(" ")}</p>` : ""}
+      ${info.length ? `<ul class="plain">${info.map(f => `<li><b>${ticks(f.title)}</b>: ${ticks(f.detail)}</li>`).join("")}</ul>` : ""}
+    </details></section>`;
+}
+function wireLog() {
+  const box = $("#agentlog"); if (!box) return;
+  const apply = () => {
+    const f = box.querySelector(".fbtn[aria-pressed=true]").dataset.f;
+    box.dataset.filter = f; box.classList.toggle("no-thoughts", !$("#log-thoughts").checked);
+  };
+  box.querySelector(".log-tools").addEventListener("click", e => {
+    const b = e.target.closest(".fbtn"); if (!b) return;
+    box.querySelectorAll(".fbtn").forEach(x => x.setAttribute("aria-pressed", String(x === b))); apply();
+  });
+  $("#log-thoughts").addEventListener("change", apply);
 }
 
 function lane(f) {
@@ -1047,7 +1340,7 @@ function lane(f) {
     <div class="lane-name"><strong>${esc(f.name)}</strong>${f.tag ? `<span>${esc(f.tag)}</span>` : ""}
       <div class="lane-cls"><span class="dot" style="background:var(--${color})"></span>${esc(f.label)}</div></div>
     <div class="lane-viz">${viz(f)}</div>
-    <div class="lane-out ${f.fixed ? "fixed" : "you"}"><b>${f.fixed ? (f.ai ? "AI fix" : "Config fix") : "Needs you"}</b><small>${Math.round(f.confidence * 100)}% confident</small></div>
+    <div class="lane-out ${f.fixed ? "fixed" : "you"}"><b>${f.fixed ? (f.ai ? "AI fix" : "Config fix") : "Needs you"}</b></div>
   </button>`;
 }
 
@@ -1127,8 +1420,7 @@ function renderDetail() {
   const tabs = [["evidence", "Evidence"], ["trace", "Where the setting comes from"], ["log", "Log"]];
   el.innerHTML = `
     <div class="detail-head">
-      <div><h2>${esc(f.display)}</h2><p class="lede" style="color:var(--ink-2);margin:6px 0 0;max-width:72ch">${ticks(f.explanation)}</p></div>
-      <div class="conf"><b>${Math.round(f.confidence * 100)}%</b><small>confidence</small><div class="meter"><i style="width:${f.confidence * 100}%"></i></div></div>
+      <div><h2>Why ${esc(f.display)} failed</h2><p class="lede" style="color:var(--ink-2);margin:6px 0 0;max-width:72ch">${ticks(f.explanation)}</p></div>
     </div>
     <div class="tabs" role="tablist">${tabs.map(([k, t]) => `<button type="button" role="tab" id="tab-${k}" aria-controls="panel" aria-selected="${TAB === k}" data-tab="${k}" tabindex="${TAB === k ? 0 : -1}">${t}</button>`).join("")}</div>
     <div class="panel" id="panel" role="tabpanel" aria-labelledby="tab-${TAB}">${panel(f)}</div>`;
@@ -1145,9 +1437,8 @@ function panel(f) {
     const facts = [["Exit code", f.exit_code], ["Attempts", f.attempts], ["Job", f.job_ref], ["Image", f.image],
                    ["Defined in", f.defined_in], ["Labels", (f.labels || []).join(", ")], ["Work folder", f.work_dir],
                    ["Name from", f.name_source]].filter(([, v]) => v !== null && v !== undefined && v !== "");
-    return `<ul class="evidence">${f.evidence.map(e => `<li><span>${ticks(e.replace(/^log: /, "Log: "))}</span></li>`).join("")}</ul>
-      ${f.fixed ? `<div class="rec fixed"><b>What the fix does</b>${f.ai ? ' <span class="badge">AI-researched</span>' : ""}<ul>${f.fix.notes.filter(n => !n.startsWith("source [")).map(n => `<li>${ticks(n.replace(/^pipefix: /, "").replace(/^pipefix AI \([^)]*\): /, ""))}</li>`).join("")}</ul>${f.ai ? citesFor(f.name) : ""}</div>`
-                : `<div class="rec"><b>What to do: </b>${ticks(f.recommendation)}</div>`}
+    return `<ul class="evidence">${f.evidence.map(e => `<li><span>${cleanEvidence(e)}</span></li>`).join("")}</ul>
+      ${f.fixed ? "" : `<div class="rec"><b>What to do: </b>${ticks(f.recommendation)}</div>`}
       <dl class="facts">${facts.map(([k, v]) => `<div><dt>${esc(k)}</dt><dd class="${/Job|Image|Defined|Work/.test(k) ? "mono" : ""}">${esc(v)}</dd></div>`).join("")}</dl>`;
   }
   if (TAB === "trace") {
@@ -1165,7 +1456,7 @@ function panel(f) {
       <p class="note">Highest precedence first, as Nextflow applies it: withName, then withLabel, then the process script, then the generic process block.</p>`;
   }
   const hit = /error|exception|denied|killed|not found|outofmemory|terminated|fail|cannot|couldn't/i;
-  return f.log.length ? `<pre class="log mono">${f.log.map(l => hit.test(l) ? `<span class="hit">${esc(l)}</span>` : esc(l)).join("\n")}</pre>`
+  return f.log.length ? `<pre class="log mono" tabindex="0" aria-label="Task log">${f.log.map(l => hit.test(l) ? `<span class="hit">${esc(l)}</span>` : esc(l)).join("\n")}</pre>`
     : `<p class="note">No log lines were readable for this task.</p>`;
 }
 
@@ -1181,18 +1472,18 @@ function changeBlock(r, job) {
   }
   const fileHTML = files.map(fl => {
     const add = fl.lines.filter(l => l.startsWith("+")).length;
-    return `<div class="diff"><div class="file"><span style="color:var(--ink)">${esc(fl.name)}</span><span>+${add}</span></div><pre class="mono">${fl.lines.filter(l => l !== "").map(l => {
+    return `<div class="diff"><div class="file"><span style="color:var(--ink)">${esc(fl.name)}</span><span>+${add}</span></div><pre class="mono" tabindex="0" aria-label="Changes to ${esc(fl.name)}">${fl.lines.filter(l => l !== "").map(l => {
       const k = l.startsWith("@@") ? "hunk" : l.startsWith("+") ? "add" : l.startsWith("-") ? "del" : "";
       const cm = /^\s*[+-]?\s*\/\//.test(l) ? " cm" : "";
       return `<span class="ln ${k}${cm}">${esc(l)}</span>`;
     }).join("")}</pre></div>`;
   }).join('<div style="height:14px"></div>');
   const tok = anyToken();
-  return `<p class="lede">${esc(r.title)}. Only the failed processes change, in a file included last in nextflow.config.</p>
+  return `<p class="lede">Only the failed process changes, in a file included last in nextflow.config.</p>
     <div class="change"><div>${fileHTML}</div>
       <div class="actions">
         <button class="btn" type="button" id="act-write" ${job.written ? "disabled" : ""}>${job.written ? "Changes written" : "Write changes"}</button>
-        <button class="btn go" type="button" id="act-mr" ${job.mr ? "disabled" : ""}>${job.mr ? "Merge request opened" : "Open merge request"}</button>
+        ${job.mr ? `<a class="btn go" href="${esc(job.mr.url)}" target="_blank" rel="noopener">View merge request<span class="sr"> (opens in a new tab)</span></a>` : `<button class="btn go" type="button" id="act-mr">Open merge request</button>`}
         <button class="btn" type="button" id="act-copy">Copy description</button>
         <p>${job.kind === "demo" ? "The demo writes to a temporary copy of the example pipeline, which has no remote, so it can't open a merge request." :
           tok ? `Writes to <span class="mono">${esc(r.repo)}</span>. Merge requests go to the repo's origin remote.` :
@@ -1217,79 +1508,6 @@ function citesFor(name) {
   const used = new Set(fx.sources);
   return `<h4 style="font-size:13px;margin:14px 0 0;color:var(--ink-2)">What the sources say (quotes verified against each page)</h4>${citeList(ai.sources.filter(s => used.has(s.n)), used, fx.evidence || [])}`;
 }
-function agentBlock(r) {
-  const a = r.agent;
-  if (!a) return "";
-  const reached = a.phases.findIndex(p => p.id === a.phase_reached);
-  const phases = a.phases.map((p, i) => {
-    const cls = a.error && i === reached ? "stop" : (i < reached || (!a.error && i <= reached)) ? "ok" : "";
-    return `<div class="ph ${cls}"><b>${esc(p.title)}</b><small>${p.steps.length} step${p.steps.length === 1 ? "" : "s"}${p.steps.some(s => !s.ok) ? `, ${p.steps.filter(s => !s.ok).length} refused` : ""}</small></div>`;
-  }).join("");
-  const d = a.diagnosis || {};
-  const chosen = a.decision?.chosen;
-  return `<section class="section" aria-labelledby="agent-h"><h2 id="agent-h">What the agent did <span class="badge">AI agent</span></h2>
-    <p class="lede">Three agents (<code>${esc(a.model)}</code>): the ${who("primary")} agent found the AWS API calls itself (${a.aws_calls} read-only calls in total), read the repo and the docs and proposed a fix; the ${who("aws_expert")} and ${who("nextflow_expert")} fact-checked it with their own calls${a.review?.agreed ? ` and agreed after ${a.review.rounds.length} round${a.review.rounds.length === 1 ? "" : "s"}` : a.review?.rounds?.length ? ", but did not agree" : ""}${a.mr_url ? "; then the primary opened the merge request" : ""}. pipefix enforced the steps, read-only access and every evidence check${a.refused ? `, and refused ${a.refused} call(s) that broke a rule` : ""}.${a.usage ? ` ${Math.round((a.elapsed || 0) / 60)} min · ${((a.usage.prompt + a.usage.completion) / 1000).toFixed(0)}k tokens.` : ""}</p>
-    ${a.error ? `<div class="result-msg err" style="margin-top:14px">${esc(a.error)}</div>` : ""}
-    <div class="agent-steps">${phases}</div>
-    <div class="aibox">
-      ${d.root_cause ? `<h3>1. Debug</h3><blockquote>${esc(d.root_cause)}</blockquote><div class="quotes">${(d.evidence || []).map(e => `<blockquote class="quote"><span class="for">call #${e.call} · ${esc(e.tool)}</span>${esc(e.excerpt)}</blockquote>`).join("")}</div>` : ""}
-      ${a.candidates.length ? `<h4>2. Research: candidate solutions</h4><div style="overflow-x:auto"><table class="cands"><thead><tr><th></th><th>Candidate</th><th>Settings</th><th>Pros / cons</th><th>Checks</th></tr></thead><tbody>
-        ${a.candidates.map(c => `<tr class="${c.id === chosen ? "chosen" : ""}"><td><b>${esc(c.id)}</b>${c.id === chosen ? ' <span class="badge">chosen</span>' : ""}</td><td>${esc(c.title)}</td>
-          <td>${Object.entries(c.settings).map(([k, v]) => `<code>${esc(k)} = ${esc(v)}</code>${c.derivations?.[k] ? `<span class="deriv">= ${esc(c.derivations[k].formula)}; ${Object.entries(c.derivations[k].inputs).map(([n, i]) => `<span title="${esc(i.quote || "")}">${esc(n)}=${esc(i.value)} (${i.call != null ? `call #${esc(i.call)}` : i.source != null ? `source [${esc(i.source)}]` : `policy: ${esc(i.policy)}`})</span>`).join(", ")}</span>` : ""}`).join("<br>") || "no config change"}</td>
-          <td>${esc(c.pros)}${c.cons ? `<br><span style="color:var(--ink-3)">${esc(c.cons)}</span>` : ""}</td>
-          <td>${c.valid ? "passed" : `<span class="rej">${esc(c.problems.join("; "))}</span>`}</td></tr>`).join("")}</tbody></table></div>` : ""}
-      ${a.decision?.chosen ? `<h4>3. Decision</h4><p style="margin:6px 0 0;font-size:14px">${esc(a.decision.reasons)}</p><ul class="plain">${Object.entries(a.decision.why_not || {}).map(([k, v]) => `<li>Not ${esc(k)}: ${esc(v)}</li>`).join("")}${a.decision.risks ? `<li>Risks: ${esc(a.decision.risks)}</li>` : ""}</ul>` : ""}
-      ${reviewHTML(a)}
-      ${a.implement_summary ? `<h4>4. Implementation</h4><p style="margin:6px 0 0;font-size:14px">${esc(a.implement_summary)}</p>` : ""}
-      ${a.mr_url ? `<h4>5. Merge request</h4><p style="margin:6px 0 0;font-size:14px"><a href="${esc(a.mr_url)}" target="_blank" rel="noopener">${esc(a.mr_url)}</a>${a.mr_summary ? ` · ${esc(a.mr_summary)}` : ""}</p>` : a.mr_summary ? `<h4>5. Merge request</h4><p style="margin:6px 0 0;font-size:14px">${esc(a.mr_summary)}</p>` : ""}
-      ${a.trace?.length ? `<details class="audit final" style="margin-top:16px" ${a.refused || a.error ? "open" : ""}><summary>The agents' reasoning: ${a.trace.filter(e => e.kind === "call").length} calls, every thought and why each call was made</summary>
-        <section class="think" style="margin-top:12px"><header>${SPARK}<h2>Agent reasoning</h2></header><div class="tl">${tlHTML(a.trace)}</div></section></details>` : ""}
-    </div></section>`;
-}
-
-function reviewHTML(a) {
-  const rounds = a.review?.rounds || [];
-  if (!rounds.length) return "";
-  const evq = e => e.call != null ? `call #${e.call}` : `source [${e.source}]`;
-  return `<h4>3b. Expert review <span class="badge">${a.review.agreed ? "agreed" : "not agreed"}</span></h4>` + rounds.map(r => `
-    <p class="note" style="margin:8px 0 0">Round ${r.round}: candidate ${esc(r.chosen)} ${Object.entries(r.settings || {}).map(([k, v]) => `<code>${esc(k)} = ${esc(v)}</code>`).join(" ")}</p>
-    <div class="reviews">${Object.values(r.reviews).map(v => `<div class="rv">${who(v.agent)} <b>${esc(v.verdict)}</b>
-      <ul>${v.checks.map(c => `<li><span class="f-${esc(c.finding)}">${esc(c.finding)}</span> · <i>${esc(c.covers)}</i>: ${esc(c.claim)}<br><span style="color:var(--ink-2)">${esc(c.explanation)}</span>${c.evidence.length ? `<br><small style="color:var(--ink-3)">${c.evidence.slice(0, 3).map(e => `${evq(e)}: “${esc(e.quote.slice(0, 160))}”`).join(" · ")}</small>` : ""}</li>`).join("")}</ul>
-      ${v.questions?.length ? `<p style="margin:6px 0 0"><b>Questions:</b> ${v.questions.map(esc).join(" · ")}</p>` : ""}</div>`).join("")}</div>
-    ${r.response ? `<p style="margin:8px 0 0;font-size:13.5px">${who("primary")} <b>${esc(r.response.action)}d</b>: ${r.response.answers.map(x => esc(x.answer)).join(" · ")}</p>` : ""}`).join("");
-}
-
-function aiBlock(r) {
-  const ai = r.ai;
-  if (!ai) return "";
-  if (ai.error) return `<section class="section"><div class="aibox"><h3>AI research <span class="badge">not used</span></h3><p class="note">${esc(ai.error)} The fix above is pipefix's rule-based one.</p></div></section>`;
-  const used = new Set(ai.fixes.flatMap(f => f.sources).concat(ai.infrastructure.flatMap(i => i.sources)));
-  return `<section class="section" aria-labelledby="ai-sec-h"><h2 id="ai-sec-h">How the AI researched this fix</h2>
-    <p class="lede">pipefix searched AWS, Nextflow and Terraform docs, read ${ai.sources.filter(s => s.read).length} of ${ai.sources.length} pages, and asked <code>${esc(ai.model)}</code> to propose the fix from them. Strict rule: every value needs a verbatim quote from a page pipefix read, and each quote was checked against that page. Highlighted sources were quoted.</p>
-    <div class="aibox">
-      <h3>Proposed fix <span class="badge">AI-researched</span></h3>
-      ${ai.summary ? `<blockquote>${esc(ai.summary)}</blockquote>` : ""}
-      ${ai.fixes.length ? `<ul class="plain">${ai.fixes.map(f => `<li><b>${esc(f.name)}</b>: ${Object.entries(f.settings).map(([k, v]) => `<code>${esc(k)} = ${esc(v)}</code>`).join(", ")}${f.rationale ? `. ${esc(f.rationale)}` : ""}${quotesHTML(f.evidence || [])}</li>`).join("")}</ul>` : `<p class="note">The AI proposed no config change that passed pipefix's checks.</p>`}
-      ${ai.infrastructure.length ? `<h4>Infrastructure advice (not applied)</h4><ul class="plain">${ai.infrastructure.map(i => `<li><b>${esc(i.title)}</b>: ${esc(i.detail)}${quotesHTML(i.evidence || [])}</li>`).join("")}</ul>` : ""}
-      ${ai.rejected.length ? `<h4>Rejected by pipefix's checks</h4><ul class="plain">${ai.rejected.map(x => `<li class="rej">${esc(x)}</li>`).join("")}</ul>` : ""}
-      <h4>Sources</h4>${citeList(ai.sources, used, ai.fixes.flatMap(f => f.evidence || []).concat(ai.infrastructure.flatMap(i => i.evidence || []))).replace(/<li class/g, (m, i) => m).replace(/<span class="n" aria-label="source (\d+)">/g, '<span class="n" id="src-$1" aria-label="source $1">')}
-      <details class="audit" style="margin-top:16px"><summary>Searches it ran (${ai.queries.length})</summary><div class="calls">${ai.queries.map(q => `<code>${esc(q)}</code>`).join("")}</div></details>
-    </div></section>`;
-}
-
-function platformBlock(r) {
-  if (!r.findings.length && !r.denials.length) return "";
-  const order = { block: 0, warn: 1, info: 2 }, name = { block: "Blocker", warn: "Warning", info: "Fact" };
-  const fs = r.findings.slice().sort((a, b) => order[a.severity] - order[b.severity]);
-  return `<section class="section" aria-labelledby="plat-h"><h2 id="plat-h">What pipefix found on the platform</h2>
-    <p class="lede">Facts from AWS and your config that shaped the fix, and anything blocking it.</p>
-    <ul class="findings">${fs.map(f => `<li><span class="sev ${f.severity}">${name[f.severity]}</span><div><b>${ticks(f.title)}</b><p>${ticks(f.detail)}</p></div></li>`).join("")}</ul>
-    ${r.denials.length ? `<div style="overflow-x:auto"><table class="denials"><caption class="sr">Access denied in CloudTrail during the run</caption>
-      <thead><tr><th>Denied action</th><th>Resource</th><th>Role</th><th>When</th></tr></thead>
-      <tbody>${r.denials.map(d => `<tr><td class="mono">${esc(d.source.split(".")[0])}:${esc(d.action)}</td><td class="mono">${esc(d.target)}</td><td class="mono">${esc((d.principal.split("/")[1]) || d.principal)}</td><td>${esc(d.time)}</td></tr>`).join("")}</tbody></table></div>` : ""}
-  </section>`;
-}
-
 function wireActions(job) {
   const msg = t => { $("#act-msg").innerHTML = t; };
   for (const b of document.querySelectorAll("[data-tok-open]")) b.addEventListener("click", () => openToken(b.dataset.tokOpen));
@@ -1316,7 +1534,7 @@ $("#mr-go").addEventListener("click", async () => {
   try {
     const r = await api(`/api/jobs/${JOB.id}/open-mr`, { ready: $("#mr-ready").checked });
     JOB.mr = r; $("#mr-dialog").close();
-    $("#act-mr").disabled = true; $("#act-mr").textContent = "Merge request opened";
+    $("#act-mr").outerHTML = `<a class="btn go" href="${esc(r.url)}" target="_blank" rel="noopener">View merge request<span class="sr"> (opens in a new tab)</span></a>`;
     $("#act-msg").innerHTML = `<div class="result-msg ok">${r.existing ? "An open merge request already proposes this change: " : "Opened "}<a href="${esc(r.url)}" target="_blank" rel="noopener">${esc(r.url)}</a></div>`;
   } catch (err) {
     $("#mr-dialog").close();
