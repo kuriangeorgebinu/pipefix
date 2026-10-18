@@ -1408,6 +1408,8 @@ class Agent:
                 if not isinstance(args, dict):
                     args = {}
                 reason = str(args.pop("reason", "") or "").strip()
+                if name in ("finish_decision", "finish_response") and not str(args.get("reasons") or "").strip():
+                    args["reasons"] = reason        # models often put the decision's reasons in the call 'reason'
                 self.n += 1
                 calls += 1
                 self.owner[self.n] = self.who
