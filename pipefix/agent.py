@@ -327,6 +327,20 @@ SUBJECT = {"memory": r"memory|\bGB\b|GiB|RAM|out.of.memory|\bOOM\b", "cpus": r"\
            "disk": r"\bdisk\b|storage"}
 
 
+def _excerpt_in(excerpt: str, output: str) -> bool:
+    """Verbatim, or verbatim pieces joined with '...' that appear in this order (each piece >= 6 characters)."""
+    pieces = [p for p in (_loose(x) for x in re.split(r"\s*(?:\.\.\.|\u2026)\s*", excerpt or "")) if p]
+    if not pieces or any(len(p) < 6 for p in pieces):
+        return False
+    hay, at = _loose(output), 0
+    for p in pieces:
+        i = hay.find(p, at)
+        if i < 0:
+            return False
+        at = i + len(p)
+    return True
+
+
 class _Refused(Exception):
     pass
 
@@ -656,8 +670,9 @@ class Agent:
             out = self.outputs.get(n if isinstance(n, int) else -1)
             if out is None:
                 problems.append(f"evidence cites call #{n}, which you did not make")
-            elif len(_loose(ex)) < 6 or _loose(ex) not in _loose(out):
-                problems.append(f"evidence excerpt for #{n} is not in that call's output: {ex[:80]!r}")
+            elif not _excerpt_in(ex, out):
+                problems.append(f"evidence excerpt for #{n} is not in that call's output: {ex[:80]!r} (copy text "
+                                "exactly; you may join separate verbatim pieces with ...)")
             else:
                 good.append({"call": n, "tool": next(s.tool for s in self.res.steps if s.n == n), "excerpt": ex})
         if len(good) < 2 or not any(COMMANDS[g["tool"]].get("aws") for g in good):

@@ -432,3 +432,13 @@ def test_a_candidate_whose_settings_are_all_no_ops_is_refused(repo):
     c = res.candidates[2]
     assert not c["valid"] and "changes nothing it claims to" in c["problems"][0] and c["declared"] == 1
     assert res.candidates[1]["declared"] == 0 and res.candidates[1]["valid"]
+
+
+def test_evidence_may_join_verbatim_pieces_in_order():
+    from pipefix.agent import _excerpt_in
+    out = '{"lines": ["[sort_reads] allocating a 12 GB sort buffer", "buf = bytearray(size)", "MemoryError"]}'
+    assert _excerpt_in("[sort_reads] allocating a 12 GB sort buffer ... MemoryError", out)
+    assert _excerpt_in("allocating a 12 GB sort buffer \u2026 bytearray(size)", out)
+    assert not _excerpt_in("MemoryError ... allocating a 12 GB sort buffer", out)        # wrong order
+    assert not _excerpt_in("allocating a 16 GB sort buffer ... MemoryError", out)          # not verbatim
+    assert not _excerpt_in("allocating ... Me", out)                                       # piece too short
