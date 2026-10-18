@@ -90,7 +90,7 @@ CANDIDATES = _p("array", "candidate solutions", items={
                         "setting -> {formula, inputs}. formula: arithmetic over the input names "
                         "(+ - * / ** ceil floor max min round), giving the first-attempt number of the value. "
                         "inputs: name -> {value: number, call: #n OR source: n, quote: verbatim text that shows "
-                        "that number}; one safety headroom factor may instead be {value: 1.0-1.5, policy: 'why'}"},
+                        "that number}. Constants other than 0, 1, 100, 1000, 1024 must be inputs too"},
         "pros": {"type": "string"}, "cons": {"type": "string"},
         "evidence": {"type": "array", "items": {"type": "object", "properties": {
             "setting": {"type": "string", "description": "the setting this quote supports"},
@@ -232,12 +232,14 @@ HARD RULES (breaking one gets your call refused):
   resourceLimits "[ memory: N.GB ]".
 - NUMBERS ARE DERIVED, NEVER GUESSED: every memory/time/cpus/disk value needs a derivation: a formula over named
   inputs, each input quoted from evidence that shows it. pipefix recomputes it. Platform facts (e.g. a memory
-  reserve) are inputs quoted from the docs. A safety headroom is a policy choice, not a fact: give it as one input
-  {value: 1.15, policy: "safety headroom"} (1.0-1.5). Rows of a docs table can be quoted as they appear.
+  reserve) are inputs quoted from the docs; any headroom or margin you add is also an input you must back with
+  evidence (a docs recommendation or something measured in this run). The formula may only use the literal
+  constants 0, 1, 100, 1000 and 1024 (unit conversions); every other number is an input. Rows of a docs table can
+  be quoted as they appear.
 - Out of memory: measure what the tool's own command needs (its flags, threads x per-thread memory, heap,
-  buffers), add a safety headroom of about 15% on top of it (the process also needs memory beyond its
-  buffer: interpreter, libraries, I/O), account for any memory the platform keeps for itself (from the
-  docs), and check in the docs which instance the request lands on. Retry only a transient failure (a kill or
+  buffers), decide how much headroom it needs and justify that from evidence (too little fails again,
+  too much moves the task to a bigger, costlier instance), account for any memory the platform keeps for itself
+  (from the docs), and check in the docs which instance the request lands on. Retry only a transient failure (a kill or
   signal the docs describe); an error raised by the tool itself repeats on retry, so size it right instead. Never
   change cpus, time or disk unless evidence gives the new number. A retry rule keeps every code it retries now and
   may add only the observed exit code. maxRetries only matters if the observed exit code is retried.
@@ -256,8 +258,10 @@ How to review:
   (aws_describe_api, aws_call), the repo, the docs (web_search, web_read_page), calculate.
 - Look for: misread logs, a wrong root cause, invented or misquoted numbers, quotes that do not say what is
   claimed, wrong arithmetic or constants, platform facts not backed by docs, a fix that would not pass on its
-  first attempt, memory that only just fits the measured need (no safety headroom: the process also needs
-  memory beyond its buffer or heap), settings changed without justification, a retry of a deterministic error.
+  first attempt, a margin (headroom) that is not backed by evidence or that moves the task to a bigger, costlier
+  instance than the evidence requires, settings changed without justification, a retry of a deterministic error.
+- If you think the margin is wrong, say what it should be and back that with evidence too; a demand without
+  evidence is not a valid objection.
 - Check the root cause (covers 'root_cause') and EVERY setting the chosen candidate changes (covers = that
   setting), or 'no_change' if it changes none.
 - If the primary says config cannot fix it, verify that claim too (e.g. a platform limit in the docs); if a
@@ -568,6 +572,7 @@ class Agent:
         self._review = self._response = None
         self._questions: list[str] = []
         self._seen: dict[tuple, int] = {}
+        self._wrong: list[str] = []
         self._reopened = False
         platform = "healthomics" if goal.get("omics_run") else "aws-batch"
         ref = f"HealthOmics run {goal['omics_run']}" if goal.get("omics_run") else \
@@ -669,7 +674,12 @@ class Agent:
         if not isinstance(params, dict):
             raise _Refused("params must be an object")
         self._policy(service, op, params)
-        s = _api()
+        try:
+            s = _api()
+        except _Refused:   # no botocore: policy still applies, parameters are not pre-validated
+            out = self.clients.call(service, re.sub(r"(?<!^)(?=[A-Z])", "_", op).lower(), **self._unredact(params))
+            self.inv.calls[:] = self.clients.calls
+            return _readable(out)
         if service not in s.get_available_services():
             raise _Refused(f"no AWS service {service!r}; use aws_describe_api")
         model = s.get_service_model(service)
@@ -905,7 +915,6 @@ class Agent:
         if target is None:
             return f"the value must be in an accepted form so its number can be checked (e.g. {_example(k)})", {}
         names, traced = {}, {}
-        policies = 0
         for name, inp in d["inputs"].items():
             if not re.fullmatch(r"[A-Za-z_]\w{0,40}", str(name)):
                 return f"input name {name!r} is not a plain name", {}
@@ -913,15 +922,9 @@ class Agent:
                     isinstance(inp.get("value"), bool):
                 return f"input {name} needs a numeric value, where it comes from (call or source) and a quote", {}
             val = float(inp["value"])
-            if inp.get("policy") and inp.get("call") is None and inp.get("source") is None:
-                policies += 1
-                if policies > 1 or not 1.0 <= val <= 1.5:
-                    return (f"input {name}: only one policy input is allowed, a safety headroom factor between 1.0 "
-                            "and 1.5 (fold any allowance for overhead into it); every other input is a fact and needs "
-                            "a quote from evidence. A number you cannot quote is a guess"), {}
-                names[str(name)] = val
-                traced[str(name)] = {"value": val, "policy": redact(str(inp["policy"]))[:200]}
-                continue
+            if inp.get("call") is None and inp.get("source") is None:
+                return (f"input {name}={val:g} has no evidence. Every input, including any headroom you choose, "
+                        "needs {call|source, quote} showing it; a number you cannot back is a guess"), {}
             good, bad = self._verify([inp])
             if bad:
                 return f"input {name}: {bad[0]}", {}
@@ -937,6 +940,12 @@ class Agent:
             got = safe_eval(str(d["formula"]), names)
         except (ValueError, SyntaxError, TypeError, ZeroDivisionError, KeyError) as e:
             return f"formula cannot be evaluated: {e}", {}
+        import ast
+        lits = {n.value for n in ast.walk(ast.parse(str(d["formula"]), mode="eval")) if isinstance(n, ast.Constant)}
+        odd = sorted(x for x in lits if x not in (0, 1, 100, 1000, 1024))
+        if odd:
+            return (f"the formula uses the constant(s) {odd}; make each an input backed by evidence (only 0, 1, 100, "
+                    "1000 and 1024 may be written in the formula)"), {}
         if abs(got - target) > max(0.01, 0.005 * target):
             return f"the formula gives {got:g}, but the value says {target:g} (round inside the formula, e.g. ceil)", {}
         return None, traced
@@ -1143,6 +1152,12 @@ class Agent:
                 problems.append(f"'{finding}' check of {str(ch.get('claim'))[:60]!r} needs verified evidence"
                                 + (f" ({bad[0]})" if bad else ""))
                 continue
+            cov = str(ch.get("covers", "")).strip()
+            if finding in ("confirmed", "wrong") and cov in NUMERIC and not any(
+                    re.search(SUBJECT[cov], g["quote"], re.I) for g in good):
+                problems.append(f"'{finding}' check of {cov} needs evidence that is about {cov} (a quote about an "
+                                "unrelated fact does not confirm or refute the number)")
+                continue
             own = own or any(self._own(g, who) for g in good)
             checks.append({"covers": str(ch.get("covers", "other")).strip(), "claim": redact(str(ch.get("claim", "")))[:600],
                            "finding": finding, "explanation": redact(str(ch.get("explanation", "")))[:1500],
@@ -1179,6 +1194,15 @@ class Agent:
             answers.append({"question": redact(str(ans.get("question", "")))[:600],
                             "answer": redact(str(ans.get("answer", "")))[:1500], "evidence": good, "bad": bad})
         if action == "defend":
+            if self._wrong:
+                raise _Refused("an expert found claims WRONG with evidence (" + "; ".join(self._wrong)[:400]
+                               + "); you cannot defend them: revise the proposal")
+            unanswered = [q for q in self._questions if not any(
+                difflib.SequenceMatcher(None, _norm(q), _norm(x["question"])).ratio() >= 0.5
+                or _norm(x["question"])[:60] in _norm(q) for x in answers)]
+            if unanswered:
+                raise _Refused(f"answer each question as asked (copy it into 'question'); unanswered: "
+                               f"{[u[:80] for u in unanswered]}")
             weak = [x for x in answers if not x["evidence"]]
             if not answers or weak:
                 raise _Refused("defending needs an answer to every question, each with verified evidence"
@@ -1235,7 +1259,9 @@ class Agent:
                 return
             if rnd == self.max_rounds:
                 break
-            self._questions = [f"[{AGENTS[r]}] {q}" for r, v in reviews.items() for q in v["questions"]]
+            self._questions = [q for r, v in reviews.items() for q in v["questions"]]
+            self._wrong = [f"[{AGENTS[r]}] {x['covers']}: {x['claim'][:120]}" for r, v in reviews.items()
+                           for x in v["checks"] if x["finding"] == "wrong"]
             detail = [{"reviewer": AGENTS[r], "objections": [x for x in v["checks"] if x["finding"] != "confirmed"]}
                       for r, v in reviews.items() if v["verdict"] == "object"]
             primary_msgs.append({"role": "user", "content":

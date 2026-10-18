@@ -72,7 +72,8 @@ class FakeAws:
 
 DOC_AWS = ("<main><p>Container resource allocations are hard limits. If a task runs out of memory, the task generates "
            "an error log and exits.</p><p>HealthOmics reserves a small amount of memory (5%) for management and "
-           "logging agents.</p><p>The omics.r.large instance has 2 vCPUs and 16 GiB of memory.</p></main>")
+           "logging agents.</p><p>The omics.r.large instance has 2 vCPUs and 16 GiB of memory.</p><p>Include at least 15% "
+           "headroom in allocated memory to account for background processes.</p></main>")
 DOC_NF = ("<main><p>The errorStrategy directive allows you to define how an error condition is managed by the "
           "process.</p><p>Use task.attempt to increase the memory on each retry, together with maxRetries.</p>"
           "<p>Exit status 137 means the process was killed with SIGKILL, often by the out of memory killer, so a "
@@ -84,8 +85,9 @@ Q_ES = "The errorStrategy directive allows you to define how an error condition 
 Q_MR = "Use task.attempt to increase the memory on each retry, together with maxRetries."
 
 LOG = 4          # the call that read the task log
-DERIV_15 = {"memory": {"formula": "ceil(need_gib * 1.15 / (1 - reserve))", "inputs": {
-    "need_gib": {"value": 12, "call": LOG, "quote": "allocating a 12 GB sort buffer"},
+HEADROOM = {"value": 0.15, "source": 1, "quote": "Include at least 15% headroom in allocated memory"}
+DERIV_15 = {"memory": {"formula": "ceil(need_gib * (1 + headroom) / (1 - reserve))", "inputs": {
+    "need_gib": {"value": 12, "call": LOG, "quote": "allocating a 12 GB sort buffer"}, "headroom": HEADROOM,
     "reserve": {"value": 0.05, "source": 1, "quote": "reserves a small amount of memory (5%)"}}}}
 
 GOOD_CANDIDATES = [
@@ -151,7 +153,7 @@ def script():
             {"covers": "memory", "claim": "15% headroom", "finding": "unsupported", "explanation": "why 15%?"}],
             "questions": ["Why is 15 GB enough after the platform reserve?"]})],                                         # 24
         [R("finish_response", {"action": "defend", "answers": [
-            {"question": "Why is 15 GB enough?", "answer": "15 GB minus the 5% reserve leaves 14.25 GB, above the 12 GB buffer.",
+            {"question": "Why is 15 GB enough after the platform reserve?", "answer": "15 GB minus the 5% reserve leaves 14.25 GB, above the 12 GB buffer.",
              "evidence": [{"source": 1, "quote": Q_RES}]}]})],                                                          # 25
         # ---- review round 2 ----
         [R("finish_review", {"verdict": "agree", "checks": [CHECK_ROOT, CHECK_MEM]})],                                 # 26
@@ -297,7 +299,7 @@ def test_three_agents_run_the_steps_and_agree_on_a_derived_fix(repo):
     res.patch.agent = res
     text = body(res.diagnoses, res.patch, res.inv)
     assert "## How the agents worked" in text and "Both experts agreed" in text
-    assert "ceil(need_gib * 1.15 / (1 - reserve))" in text
+    assert "ceil(need_gib * (1 + headroom) / (1 - reserve))" in text
     assert pr_title(res.patch).startswith("pipefix agent:")
     j = to_json(res)
     assert j["aws_calls"] == 4 and j["review"]["agreed"] and j["usage"]["requests"] == len(llm.requests)
@@ -363,7 +365,13 @@ def test_debug_diagnosis_is_cross_checked(repo):
 
 @pytest.mark.parametrize("deriv,why", [
     (None, "needs a derivation"),
-    ({"formula": "need_gib * 1.15 / (1 - reserve)", "inputs": DERIV_15["memory"]["inputs"]}, "the formula gives 14.5"),
+    ({"formula": "need_gib * (1 + headroom) / (1 - reserve)", "inputs": DERIV_15["memory"]["inputs"]},
+     "the formula gives 14.5"),
+    ({"formula": "ceil(need_gib * 1.15 / (1 - reserve))", "inputs": DERIV_15["memory"]["inputs"]},
+     "make each an input backed by evidence"),                          # a headroom literal is a guess
+    ({"formula": "ceil(need_gib * h / (1 - reserve))", "inputs": {**DERIV_15["memory"]["inputs"],
+                                                                   "h": {"value": 1.15, "policy": "safety"}}},
+     "has no evidence"),
     ({"formula": "ceil(need_gib * 1.15 / 0.95)", "inputs": {"need_gib": {"value": 13, "call": LOG,
                                                                           "quote": "allocating a 12 GB sort buffer"}}},
      "the quote does not show that number"),
@@ -377,7 +385,8 @@ def test_debug_diagnosis_is_cross_checked(repo):
     ({"formula": "__import__('os').getpid()", "inputs": {"os": {"value": 12, "call": LOG,
                                                                  "quote": "allocating a 12 GB sort buffer"}}},
      "cannot be evaluated"),
-    ({"formula": "ceil(r * 300)", "inputs": {"r": {"value": 0.05, "source": 1,
+    ({"formula": "floor(k * (1 - r))", "inputs": {"k": {"value": 16, "source": 1, "quote": "16 GiB of memory"},
+                                                  "r": {"value": 0.05, "source": 1,
                                                    "quote": "reserves a small amount of memory (5%)"}}},
      "derived from what the task needs"),                    # out of memory: the need must come from the run or repo
 ])
@@ -408,18 +417,15 @@ def test_hard_rules(repo, settings, extra, why):
     assert why in st.output and not res.candidates[0]["valid"] if st.ok else why in st.output, st.output
 
 
-def test_a_headroom_policy_input_and_a_table_row_quote(repo):
-    deriv = {"memory": {"formula": "ceil(need_gib * headroom / (1 - reserve))", "inputs": {
-        **DERIV_15["memory"]["inputs"], "headroom": {"value": 1.15, "policy": "safety headroom"}}}}
+def test_the_agent_decides_the_headroom_but_must_back_it_and_table_rows_count(repo):
+    deriv = {"memory": {"formula": "ceil(need_gib * (1 + h) / (1 - reserve))", "inputs": {
+        **{k: v for k, v in DERIV_15["memory"]["inputs"].items() if k != "headroom"},
+        "h": {"value": 0.15, "source": 1, "quote": "at least 15% headroom"}}}}
     a = {**GOOD_CANDIDATES[0], "derivations": deriv,
          "evidence": [{"setting": "memory", "source": 1, "quote": Q_MEM}, {"source": 1, "quote": "omics.r.large instance"}]}
     res, _, _ = run_agent(repo, turns=with_research([a, GOOD_CANDIDATES[1]]))
     assert res.done, res.error
-    assert res.candidates[0]["derivations"]["memory"]["inputs"]["headroom"]["policy"] == "safety headroom"
-    bad = {**a, "derivations": {"memory": {**deriv["memory"], "inputs": {
-        **deriv["memory"]["inputs"], "headroom": {"value": 2.5, "policy": "lots"}}}}}
-    res, _, _ = run_agent(repo, turns=with_research([bad, GOOD_CANDIDATES[1]], tries=4))
-    assert "between 1.0 and 1.5" in first(res, "finish_research").output
+    assert res.candidates[0]["derivations"]["memory"]["inputs"]["h"]["url"].startswith("https://docs.aws")
 
 
 def test_healthomics_sizing_must_cite_the_instance_docs(repo):
@@ -514,7 +520,7 @@ def test_defending_needs_evidence_and_revising_is_rechecked(repo):
     k = turn_of(turns, "finish_response")
     rev = {"id": "A", "title": "Size memory to the buffer, 16 GB", "process": "SORT_READS",
            "settings": {"memory": "{ 16.GB * task.attempt }"}, "rationale": "more headroom",
-           "derivations": {"memory": {"formula": "ceil(need_gib * 1.2 / (1 - reserve))",
+           "derivations": {"memory": {"formula": "ceil((need_gib + 1) * (1 + headroom) / (1 - reserve))",
                                       "inputs": DERIV_15["memory"]["inputs"]}},
            "evidence": GOOD_CANDIDATES[0]["evidence"]}
     turns[k:k + 1] = [
@@ -527,7 +533,7 @@ def test_defending_needs_evidence_and_revising_is_rechecked(repo):
     ]
     res, _, _ = run_agent(repo, turns=turns)
     outs = [s.output for s in res.steps if s.tool == "finish_response" and not s.ok]
-    assert "each with verified evidence" in outs[0]
+    assert "answer each question as asked" in outs[0]
     assert "the formula gives 16, but the value says 99" in outs[1]
     assert res.done and "{ 16.GB * task.attempt }" in res.patch.files["conf/pipefix.config"][1]
     assert res.review["rounds"][0]["response"]["action"] == "revise"
@@ -540,7 +546,8 @@ def test_no_agreement_means_no_change_and_no_mr(repo):
         {**CHECK_ROOT, "evidence": [{"call": 23, "quote": "--buffer-gb ${params.sort_buffer_gb}"}]},
         {"covers": "memory", "claim": "15 GB", "finding": "unsupported", "explanation": "not proven"}],
         "questions": ["prove it"]})]
-    defend = turns[turn_of(turns, "finish_response")]
+    defend = [R("finish_response", {"action": "defend", "answers": [
+        {"question": "prove it", "answer": "the docs give the reserve", "evidence": [{"source": 1, "quote": Q_RES}]}]})]
     k = turn_of(turns, "finish_review", 2)
     agree_aws = turns[k]
     turns[k:] = [agree_aws, obj, defend, agree_aws, obj]          # rounds 2 and 3: the Nextflow expert still objects
@@ -646,3 +653,24 @@ def test_out_of_memory_without_a_config_candidate_needs_a_proven_reason(repo):
             {"source": 1, "quote": Q_MEM}]}})]
     res, _, _ = run_agent(repo, turns=turns)
     assert first(res, "finish_research").ok and res.diagnosis["no_config_reason"]["evidence"]
+
+
+def test_a_reviewer_cannot_confirm_a_number_with_an_unrelated_quote(repo):
+    turns = script()
+    k = turn_of(turns, "finish_review")
+    off = {**CHECK_MEM, "evidence": [{"source": 1, "quote": "Container resource allocations are hard limits"}]}
+    turns.insert(k, [R("finish_review", {"verdict": "agree", "checks": [CHECK_ROOT, off]})])
+    res, _, _ = run_agent(repo, turns=turns)
+    st = next(s for s in res.steps if s.tool == "finish_review")
+    assert not st.ok and "needs evidence that is about memory" in st.output
+
+
+def test_a_claim_found_wrong_with_evidence_must_be_revised_not_defended(repo):
+    turns = script()
+    k = turn_of(turns, "finish_review", 1)
+    turns[k] = [R("finish_review", {"verdict": "object", "checks": [
+        {**CHECK_ROOT, "evidence": [{"call": 23, "quote": "--buffer-gb ${params.sort_buffer_gb}"}]},
+        {**CHECK_MEM, "finding": "wrong", "claim": "15 GB fits"}], "questions": ["Why is 15 GB enough after the platform reserve?"]})]
+    res, _, _ = run_agent(repo, turns=turns)
+    st = first(res, "finish_response")
+    assert not st.ok and "cannot defend them: revise" in st.output

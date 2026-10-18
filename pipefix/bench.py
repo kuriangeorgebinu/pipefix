@@ -95,7 +95,7 @@ CASES = [
          expect={"kind": "no_config"}),
     Case("timeout-full-limit", "BWA alignment killed at its 4 h time limit when half done (AWS Batch)",
          "BWA_MEM", "process_high", 8, 16, "bwa mem -t ${task.cpus} ref.fa r1.fq r2.fq | samtools view -b -o out.bam",
-         {}, 140, ["[M::mem_process_seqs] Processed 400000 reads in 3.1 CPU sec", "[progress] 50% of reads aligned "
+         {}, 143, ["[M::mem_process_seqs] Processed 400000 reads in 3.1 CPU sec", "[progress] 50% of reads aligned "
                                                                                 "after 4h 0m",
                    "Process exceeded running time limit (4h)"],
          platform="batch", hours=4,
