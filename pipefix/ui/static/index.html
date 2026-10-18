@@ -20,7 +20,7 @@
   --bg: #F2F4F3; --surface: #FFFFFF; --surface-2: #E9EDEB; --sunk: #F7F8F8;
   --ink: #17202B; --ink-2: #485462; --ink-3: #5F6B78; --rule: #D6DCD9; --rule-2: #C4CCC8;
   --A: #1F9D5A; --C: #2563C9; --G: #B07800; --T: #D23B32;
-  --A-ink: #17804A; --G-ink: #8A5E00; --T-ink: #B42E26; --A-btn: #17804A; --on-accent: #FFFFFF;
+  --A-ink: #146C3F; --G-ink: #8A5E00; --T-ink: #B42E26; --A-btn: #17804A; --on-accent: #FFFFFF;
   --A-wash: #E3F3EA; --C-wash: #E4ECFA; --G-wash: #FBF1DC; --T-wash: #FBE6E4;
   --focus: #2563C9;
   --sans: "Instrument Sans", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
@@ -113,7 +113,7 @@ details.more summary { cursor: pointer; }
 .btn.primary { background: var(--ink); color: var(--surface); border-color: var(--ink); }
 .btn.primary:hover { filter: brightness(1.15); }
 .btn.go { background: var(--A-btn); border-color: var(--A-btn); color: var(--on-accent); }
-.btn:disabled { opacity: .45; cursor: not-allowed; }
+.btn:disabled { cursor: default; color: var(--ink-2); background: var(--surface-2); border-style: dashed; }
 .run-btn { width: 100%; justify-content: center; margin-top: 20px; padding: 12px; }
 .note { font-size: 12.5px; color: var(--ink-3); margin: 10px 0 0; }
 
@@ -520,6 +520,13 @@ details.more-d p { color: var(--ink-2); max-width: 80ch; }
 details.agentlog { margin-top: 14px; border: 1px solid var(--rule); border-radius: var(--r-panel); background: var(--surface); }
 details.agentlog > summary { cursor: pointer; padding: 14px 18px; display: flex; flex-wrap: wrap; gap: 4px 14px; align-items: baseline; }
 details.agentlog > summary .sum-t { font-weight: 600; }
+details.agentlog > summary { list-style: none; }
+details.agentlog > summary::-webkit-details-marker { display: none; }
+details.agentlog > summary::before { content: "▸"; margin-right: 2px; color: var(--ink-2); }
+details.agentlog[open] > summary::before { content: "▾"; }
+.log-jump { display: flex; flex-wrap: wrap; gap: 4px 14px; padding: 10px 18px; border-bottom: 1px solid var(--rule); font-size: 13px; }
+.lg .args a { color: var(--C); }
+.answer .foot { margin: 6px 0 0; font-size: 12.5px; color: var(--ink-3); }
 details.agentlog > summary .sum-d { font-size: 13px; color: var(--ink-3); }
 .log-tools { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; padding: 0 18px 12px; border-bottom: 1px solid var(--rule); }
 .fbtn { border: 1px solid var(--rule-2); background: var(--surface); border-radius: 999px; padding: 4px 12px; font-size: 13px; cursor: pointer; }
@@ -535,7 +542,7 @@ details.agentlog > summary .sum-d { font-size: 13px; color: var(--ink-3); }
 .lg-phase h3::after { content: ""; flex: 1; height: 1px; background: var(--rule); }
 .lg-round { margin: 12px 0 4px; font-size: 13px; font-weight: 600; color: var(--ink-2); }
 .lg { display: grid; grid-template-columns: 132px minmax(0, 1fr); gap: 12px; padding: 8px 0; border-top: 1px dashed var(--rule); }
-.lg-who.cont .av { opacity: .55; }
+.lg-who.cont .av { box-shadow: none; background: transparent; }
 .lg-who { display: flex; align-items: flex-start; gap: 8px; font-size: 12.5px; font-weight: 600; color: var(--ink-2); padding-top: 2px; }
 .av { flex: none; min-width: 28px; height: 22px; padding: 0 5px; border-radius: 6px; display: inline-grid; place-items: center; font-size: 10.5px; font-weight: 700; letter-spacing: .02em; }
 .av.primary { background: var(--A-wash); color: var(--A-ink); box-shadow: inset 0 0 0 1px var(--A-ink); }
@@ -1046,13 +1053,23 @@ function handoffWhy(from, to, verdict) {
   if (to === "primary") return verdict === "object" ? "sends back objections to answer" : "returns its verdict";
   return "the next expert reviews it independently";
 }
+function callLabel(e) {
+  if (!e) return "";
+  if (e.tool === "aws_call" && e.args) return `${e.args.service || ""}.${e.args.operation || ""}`;
+  if (e.tool === "web_read_page" && e.args) return `docs page ${e.args.source ?? ""}`;
+  if (e.tool?.startsWith("repo_") && e.args) return `${e.tool.replace("repo_", "repo ").replace("_", " ")} ${e.args.path || e.args.process || e.args.pattern || ""}`.trim();
+  return e.tool || "";
+}
 function logHTML(events) {
-  const results = {}, verdict = {};
-  for (const e of events) if (e.kind === "result") results[e.n] = e;
+  const results = {}, verdict = {}, calls = {}, lastReview = {};
+  for (const e of events) {
+    if (e.kind === "result") results[e.n] = e;
+    if (e.kind === "call") { calls[e.n] = e; if (e.tool === "finish_review") lastReview[e.agent] = e; }
+  }
   let cur = null;
   const out = [];
   for (const e of events) {
-    if (e.kind === "phase") { out.push(`<li class="lg-phase"><h3>${esc(e.text)}</h3></li>`); continue; }
+    if (e.kind === "phase") { out.push(`<li class="lg-phase"><h3 id="lgp-${esc(e.phase)}" tabindex="-1">${esc(e.text)}</h3></li>`); continue; }
     if (e.kind === "round") { out.push(`<li class="lg-round">${esc(e.text)}</li>`); continue; }
     if (e.kind === "result" || e.kind === "vote") continue;
     const ag = e.agent || "primary";
@@ -1068,15 +1085,19 @@ function logHTML(events) {
       out.push(`<li class="lg thought" data-ag="${esc(ag)}">${head}<div class="lg-body"><span class="lg-k">Thinking</span><p>${esc(e.text)}</p></div></li>`);
     } else if (e.kind === "call") {
       const r = results[e.n], [k, label] = toolKind(e.tool), state = !r ? "pending" : r.ok ? "" : "no";
-      out.push(`<li class="lg call ${state}" data-ag="${esc(ag)}">${head}<div class="lg-body">
+      const target = e.tool === "inspect_call" && e.args?.call != null ? calls[e.args.call] : null;
+      out.push(`<li class="lg call ${state}" id="lg-${e.n}" data-ag="${esc(ag)}">${head}<div class="lg-body">
         <div class="call-h"><span class="num">#${e.n}</span><span class="kind ${k}">${label}</span><code class="tool">${esc(e.tool)}</code>${!r ? '<span class="run">running</span>' : ""}</div>
-        ${e.args && Object.keys(e.args).length && !e.args["..."] ? `<code class="args">${esc(argText(e.tool, e.args))}</code>` : ""}
-        <p class="why"><span class="lg-k">Why</span> ${esc(e.text)}</p>
+        ${target ? `<p class="args">re-checks <a href="#lg-${esc(target.n)}">#${esc(target.n)} ${esc(callLabel(target))}</a> (by ${esc(WHO[target.agent] || "Primary")})</p>`
+          : e.args && Object.keys(e.args).length && !e.args["..."] && !e.tool.startsWith("finish_") ? `<code class="args">${esc(argText(e.tool, e.args))}</code>` : ""}
+        ${e.tool === "finish_review" && r?.ok ? `<p class="why">Submitted its review (see the verdict below).</p>` : `<p class="why"><span class="lg-k">Why</span> ${esc(e.text)}</p>`}
         ${r ? (r.ok ? `<details class="res"><summary>Result${r.full ? ` (first ${r.text.length} of ${r.full} characters)` : ""}</summary><pre tabindex="0">${esc(r.text)}</pre></details>` : `<p class="refused"><b>Refused by pipefix:</b> ${esc(r.text.replace(/^REFUSED:\s*/, ""))}</p>`) : ""}
       </div></li>`);
     } else if (e.kind === "review") {
       verdict[ag] = e.verdict;
-      out.push(`<li class="lg verdict ${e.verdict === "agree" ? "ok" : "bad"}" data-ag="${esc(ag)}">${head}<div class="lg-body"><span class="lg-k">${e.verdict === "agree" ? "Verdict: agreed" : "Verdict: objected"}</span><p>${esc(e.text.replace(/^[^:]+:\s*(AGREE|OBJECT)\s*(—\s*)?/, ""))}</p></div></li>`);
+      const qs = e.text.replace(/^[^:]+:\s*(AGREE|OBJECT)\s*(—\s*)?/, "");
+      const why = lastReview[ag]?.text && lastReview[ag].text !== "(no reason given)" ? lastReview[ag].text : "";
+      out.push(`<li class="lg verdict ${e.verdict === "agree" ? "ok" : "bad"}" data-ag="${esc(ag)}">${head}<div class="lg-body"><span class="lg-k">${e.verdict === "agree" ? "Verdict: agreed" : "Verdict: objected"}</span>${why ? `<p>${esc(why)}</p>` : ""}${qs ? `<p><b>Questions:</b> ${esc(qs)}</p>` : ""}</div></li>`);
     } else if (e.kind === "agree") {
       out.push(`<li class="lg-note ok">${esc(e.text)}</li>`);
     } else if (e.kind === "stop") {
@@ -1186,8 +1207,8 @@ function firstSentence(t, max = 220) {
 function pretty(directive, v) {
   const s = String(v ?? "").trim();
   let m;
-  if ((m = s.match(/(\d+(?:\.\d+)?)\s*\.?\s*GB/i))) return `${m[1]} GB${/task\.attempt/.test(s) ? " (grows on retry)" : ""}`;
-  if ((m = s.match(/(\d+(?:\.\d+)?)\s*\.?\s*h\b/))) return `${m[1]} h${/task\.attempt/.test(s) ? " (grows on retry)" : ""}`;
+  if ((m = s.match(/(\d+(?:\.\d+)?)\s*\.?\s*GB/i))) return `${m[1]} GB`;
+  if ((m = s.match(/(\d+(?:\.\d+)?)\s*\.?\s*h\b/))) return `${m[1]} h`;
   if (directive === "cpus" && (m = s.match(/(\d+)/))) return `${m[1]} vCPU`;
   if (directive === "errorStrategy") { const c = s.match(/in\s+(.+?)\s*\?/); return c ? `retry exit codes ${c[1]}` : s; }
   return s.replace(/^'|'$/g, "");
@@ -1195,8 +1216,10 @@ function pretty(directive, v) {
 function cleanEvidence(s) {
   // "#3 aws_call: \"cpus\": 2, \"memory\": 2" -> chip "call #3 · AWS" + "cpus: 2, memory: 2"
   const m = String(s).match(/^#(\d+)\s+([\w_]+):\s*([\s\S]*)$/);
-  const body = (m ? m[3] : String(s).replace(/^log: /, "")).replace(/\\?"([A-Za-z_][\w]*)":\s*/g, "$1: ").replace(/\\"/g, "\"").replace(/^"|"$/g, "");
-  const tool = m ? (m[2] === "aws_call" ? "AWS" : m[2].startsWith("repo_") ? "Repo" : m[2].startsWith("web_") ? "Docs" : m[2]) : (/^log: /.test(s) ? "Log" : "");
+  const body = (m ? m[3] : String(s).replace(/^log: /, "")).replace(/\\?"([A-Za-z_][\w]*)":\s*/g, "$1: ").replace(/\\"/g, "\"").replace(/"([^"]*)"/g, "$1").replace(/^"|"$/g, "");
+  const step = m && (JOB?.result?.agent?.phases || []).flatMap(p => p.steps).find(x => x.n === +m[1]);
+  const isLog = /logs:GetLogEvents|logs:FilterLogEvents/.test(step?.summary || "");
+  const tool = m ? (isLog ? "Log" : m[2] === "aws_call" ? "AWS" : m[2].startsWith("repo_") ? "Repo" : m[2].startsWith("web_") ? "Docs" : m[2]) : (/^log: /.test(s) ? "Log" : "");
   return `${m ? `<span class="evsrc">call #${esc(m[1])} · ${esc(tool)}</span>` : tool ? `<span class="evsrc">${esc(tool)}</span>` : ""}<span>${ticks(body)}</span>`;
 }
 const WF_STEP = /new workflow version/i;
@@ -1215,7 +1238,7 @@ function answerCard(r, job) {
     a?.decision?.lands_on ? `<span class="chip">Runs on ${esc(a.decision.lands_on.instance)}</span>` : ""].join("");
   const mr = job.mr?.url || a?.mr_url;
   const steps = [];
-  if (mr) steps.push(`Review and merge the <a href="${esc(mr)}" target="_blank" rel="noopener">merge request</a>.`);
+  if (mr) steps.push("Review and merge the merge request.");
   else if (r.diff) steps.push(`Review the change below, then open a merge request.`);
   if (r.findings.some(f => WF_STEP.test(f.title))) steps.push("After merging, publish a new HealthOmics workflow version.");
   if (r.diff) steps.push("Rerun the pipeline.");
@@ -1223,7 +1246,7 @@ function answerCard(r, job) {
   return `<section class="answer" aria-labelledby="answer-h">
     <h2 id="answer-h" class="sr">Summary</h2>
     ${cause ? `<p class="cause-line"><b>Cause</b> ${ticks(cause)}</p>` : ""}
-    ${changes.length ? `<ul class="changes" aria-label="Setting changes">${changes.join("")}</ul>` : `<p class="nofix">No config change ${stopped(r) ? "was made" : "can fix this"}.</p>`}
+    ${changes.length ? `<ul class="changes" aria-label="Setting changes">${changes.join("")}</ul>${fixedF.some(f => Object.values(f.fix.settings).some(v => /task\.attempt/.test(v))) ? `<p class="foot">Grows with each retry (× task.attempt).</p>` : ""}` : `<p class="nofix">No config change ${stopped(r) ? "was made" : "can fix this"}.</p>`}
     ${chips ? `<div class="chips">${chips}</div>` : ""}
     ${a?.error ? `<p class="result-msg err">${esc(firstSentence(a.error, 260))}</p>` : ""}
     <div class="answer-foot">
@@ -1253,8 +1276,8 @@ function howWeKnow(r) {
     const c = a.candidates.find(x => x.id === a.decision?.chosen);
     const derivs = Object.entries(c?.derivations || {});
     if (derivs.length) body += `<h3>How the number was worked out</h3>` + derivs.map(([k, d]) => `
-      <div class="formula"><code>${esc(k)} = ${esc(d.formula)}</code>
-        <ul>${Object.entries(d.inputs).map(([nm, i]) => `<li><code>${esc(nm)} = ${esc(i.value)}</code> <span class="from-ev">${i.call != null ? `from the run (call #${esc(i.call)})` : i.source != null ? `from ${srcName(i.source)}` : esc(i.policy || "")}</span>${i.quote ? `<q>${esc(i.quote.length > 160 ? i.quote.slice(0, 157) + "…" : i.quote)}</q>` : ""}</li>`).join("")}</ul></div>`).join("");
+      <div class="formula"><code>${esc(k)} = ${esc(d.formula)} = ${esc(pretty(k, c.settings[k]))}</code>
+        <ul>${Object.entries(d.inputs).map(([nm, i]) => `<li><code>${esc(nm)} = ${esc(i.value)}</code> <span class="from-ev">${i.call != null ? `from the run (call #${esc(i.call)})` : i.source != null ? `from ${srcName(i.source)}` : esc(i.policy || "")}</span>${i.quote ? `<q>${esc(i.quote.length > 200 ? i.quote.slice(0, i.quote.lastIndexOf(" ", 197)) + "…" : i.quote)}</q>` : ""}</li>`).join("")}</ul></div>`).join("");
     const last = (a.review?.rounds || []).slice(-1)[0];
     if (last) body += `<h3>Expert check</h3><ul class="verdicts">${Object.values(last.reviews).map(v => {
       const ok = v.checks.filter(x => x.finding === "confirmed").length;
@@ -1311,8 +1334,9 @@ function auditBlock(r) {
         <span class="sum-d">${Object.entries(counts).map(([k, v]) => `${esc(WHO[k] || k)} ${v}`).join(" · ")} calls${a.usage ? ` · ${Math.max(1, Math.round((a.elapsed || 0) / 60))} min · ${((a.usage.prompt + a.usage.completion) / 1000).toFixed(0)}k tokens` : ""}${a.refused ? ` · ${a.refused} refused` : ""}</span></summary>
       <div class="log-tools" role="group" aria-label="Show steps by">
         ${[["all", "All agents"], ["primary", "Primary"], ["aws_expert", "AWS expert"], ["nextflow_expert", "Nextflow expert"]].map(([k, t], i) => `<button type="button" class="fbtn" data-f="${k}" aria-pressed="${i === 0}">${t}</button>`).join("")}
-        <label class="tgl"><input type="checkbox" id="log-thoughts" checked> Show thinking</label>
+        ${a.trace.some(e => e.kind === "thought") ? `<label class="tgl"><input type="checkbox" id="log-thoughts" checked> Show thinking</label>` : ""}
       </div>
+      <nav class="log-jump" aria-label="Jump to a step">${[...new Map(a.trace.filter(e => e.kind === "phase").map(e => [e.phase, e.text])).entries()].map(([p, t]) => `<a href="#lgp-${esc(p)}">${esc(t)}</a>`).join("")}</nav>
       ${logHTML(a.trace)}</details>` : ""}
     <details class="more-d"><summary>What pipefix read: ${nCalls} read-only AWS call${nCalls === 1 ? "" : "s"}</summary>
       <div class="calls">${r.calls.map(c => `<code>${esc(c.call)}${c.count > 1 ? " ×" + c.count : ""}</code>`).join("")}</div>
@@ -1325,13 +1349,13 @@ function wireLog() {
   const box = $("#agentlog"); if (!box) return;
   const apply = () => {
     const f = box.querySelector(".fbtn[aria-pressed=true]").dataset.f;
-    box.dataset.filter = f; box.classList.toggle("no-thoughts", !$("#log-thoughts").checked);
+    box.dataset.filter = f; box.classList.toggle("no-thoughts", $("#log-thoughts") ? !$("#log-thoughts").checked : false);
   };
   box.querySelector(".log-tools").addEventListener("click", e => {
     const b = e.target.closest(".fbtn"); if (!b) return;
     box.querySelectorAll(".fbtn").forEach(x => x.setAttribute("aria-pressed", String(x === b))); apply();
   });
-  $("#log-thoughts").addEventListener("change", apply);
+  $("#log-thoughts")?.addEventListener("change", apply);
 }
 
 function lane(f) {
@@ -1420,7 +1444,7 @@ function renderDetail() {
   const tabs = [["evidence", "Evidence"], ["trace", "Where the setting comes from"], ["log", "Log"]];
   el.innerHTML = `
     <div class="detail-head">
-      <div><h2>Why ${esc(f.display)} failed</h2><p class="lede" style="color:var(--ink-2);margin:6px 0 0;max-width:72ch">${ticks(f.explanation)}</p></div>
+      <div><h2>Why ${esc(f.display)} failed</h2>${JOB.result.agent && JOB.result.failures.length === 1 ? "" : `<p class="lede" style="color:var(--ink-2);margin:6px 0 0;max-width:72ch">${ticks(f.explanation)}</p>`}</div>
     </div>
     <div class="tabs" role="tablist">${tabs.map(([k, t]) => `<button type="button" role="tab" id="tab-${k}" aria-controls="panel" aria-selected="${TAB === k}" data-tab="${k}" tabindex="${TAB === k ? 0 : -1}">${t}</button>`).join("")}</div>
     <div class="panel" id="panel" role="tabpanel" aria-labelledby="tab-${TAB}">${panel(f)}</div>`;
@@ -1436,7 +1460,7 @@ function panel(f) {
   if (TAB === "evidence") {
     const facts = [["Exit code", f.exit_code], ["Attempts", f.attempts], ["Job", f.job_ref], ["Image", f.image],
                    ["Defined in", f.defined_in], ["Labels", (f.labels || []).join(", ")], ["Work folder", f.work_dir],
-                   ["Name from", f.name_source]].filter(([, v]) => v !== null && v !== undefined && v !== "");
+                   ].filter(([, v]) => v !== null && v !== undefined && v !== "");
     return `<ul class="evidence">${f.evidence.map(e => `<li><span>${cleanEvidence(e)}</span></li>`).join("")}</ul>
       ${f.fixed ? "" : `<div class="rec"><b>What to do: </b>${ticks(f.recommendation)}</div>`}
       <dl class="facts">${facts.map(([k, v]) => `<div><dt>${esc(k)}</dt><dd class="${/Job|Image|Defined|Work/.test(k) ? "mono" : ""}">${esc(v)}</dd></div>`).join("")}</dl>`;
@@ -1488,7 +1512,7 @@ function changeBlock(r, job) {
         <p>${job.kind === "demo" ? "The demo writes to a temporary copy of the example pipeline, which has no remote, so it can't open a merge request." :
           tok ? `Writes to <span class="mono">${esc(r.repo)}</span>. Merge requests go to the repo's origin remote.` :
           `To open merge requests, <button class="linkbtn" type="button" data-tok-open="github">add a GitHub token</button> or <button class="linkbtn" type="button" data-tok-open="gitlab">a GitLab token</button>.`}</p>
-        <div id="act-msg" aria-live="polite">${job.mr ? `<div class="result-msg ok">Merge request: <a href="${esc(job.mr.url)}" target="_blank" rel="noopener">${esc(job.mr.url)}</a></div>` :
+        <div id="act-msg" aria-live="polite">${job.mr ? `<div class="result-msg ok">Merge request opened.</div>` :
           job.written ? `<div class="result-msg ok">Wrote ${job.written.map(w => `<code>${esc(w)}</code>`).join(", ")}.</div>` : ""}</div>
       </div></div>`;
 }
