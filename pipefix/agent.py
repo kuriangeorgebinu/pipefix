@@ -221,7 +221,9 @@ PHASE_BRIEF = {
     "research": "STEP 2, RESEARCH SOLUTIONS. Search the docs (aws, nextflow, terraform) for how to fix this failure, "
                 "READ the useful results with web_read_page, then finish_research with 2-4 genuinely different "
                 "candidates (e.g. raise memory vs lower the tool's buffer; with or without retry changes). Each "
-                "setting needs a verbatim quote from a page you read.",
+                "setting needs a verbatim quote from a page you read. Cite pages by their SOURCE number (the "
+                "'source' in web_search results, 'cite_as_source' in web_read_page), copy quotes exactly from the "
+                "'passages', and only cite pages you have read.",
     "decide": "STEP 3, PICK THE BEST SOLUTION. No tools. Compare the candidates on correctness for THIS failure, cost, "
               "and risk, then call finish_decision.",
     "implement": "STEP 4, IMPLEMENT. Call implement_apply, check the diff it returns, then finish_implement.",
@@ -265,6 +267,12 @@ class AgentResult:
         return not self.error and self.phase_reached == "mr"
 
 
+def _loose(text: str) -> str:
+    """For checking debug evidence against JSON tool output: ignore JSON punctuation/escapes, case and spacing."""
+    text = re.sub(r'\\[nrt"/\\]', " ", text or "")
+    return " ".join(re.sub(r'[{}\[\]",:]', " ", _norm(text)).split())
+
+
 class _Refused(Exception):
     pass
 
@@ -301,6 +309,7 @@ class Agent:
         self.res = AgentResult(model=self.model)
         self.outputs: dict[int, str] = {}          # call # -> full redacted output (for evidence checks)
         self.sources: list[dict] = []              # research sources {n, title, url, site, snippet, text, read}
+        self.read_by_call: dict[int, int] = {}     # call # of a web_read_page -> the source it read
         self.account: str | None = None
         self.n = 0
         platform = "healthomics" if goal.get("omics_run") else "aws-batch"
@@ -451,7 +460,7 @@ class Agent:
                            "snippet": str(h.get("snippet", ""))[:300], "site": site, "read": False}
                     self.sources.append(old)
                 if old:
-                    found.append({k: old[k] for k in ("n", "title", "url", "snippet")})
+                    found.append({"source": old["n"], "title": old["title"], "url": old["url"], "snippet": old["snippet"]})
             return {"query": q, "results": found}
         if name == "web_read_page":
             n = args.get("source")
@@ -466,7 +475,8 @@ class Agent:
                 except Exception as e:  # network errors are reported to the agent, not fatal
                     raise _Refused(f"could not read the page ({type(e).__name__})")
                 src["read"] = bool(src["text"])
-            return {"source": n, "title": src["title"], "url": src["url"], "passages": excerpt(src["text"])}
+            self.read_by_call[self.n] = n
+            return {"cite_as_source": n, "title": src["title"], "url": src["url"], "passages": excerpt(src["text"])}
         raise _Refused(name)
 
     # ----- finish checks -----
@@ -492,7 +502,7 @@ class Agent:
             out = self.outputs.get(n if isinstance(n, int) else -1)
             if out is None:
                 problems.append(f"evidence cites call #{n}, which you did not make")
-            elif len(_norm(ex)) < 6 or _norm(ex) not in _norm(out):
+            elif len(_loose(ex)) < 6 or _loose(ex) not in _loose(out):
                 problems.append(f"evidence excerpt for #{n} is not in that call's output: {ex[:80]!r}")
             else:
                 good.append({"call": n, "tool": next(s.tool for s in self.res.steps if s.n == n), "excerpt": ex})
@@ -516,11 +526,16 @@ class Agent:
             evid, cp = [], []
             for ev in c.get("evidence") or []:
                 n = ev.get("source")
-                why = verify_quote(str(ev.get("quote", "")), by_n.get(n) if by_n.get(n, {}).get("read") else None)
+                n = int(n) if isinstance(n, (int, float)) or (isinstance(n, str) and str(n).isdigit()) else n
+                if not by_n.get(n, {}).get("read") and n in self.read_by_call:
+                    n = self.read_by_call[n]     # the model cited the call that read the page: same page
+                src = by_n.get(n) if by_n.get(n, {}).get("read") else None
+                why = verify_quote(str(ev.get("quote", "")), src)
                 if why:
-                    cp.append(f"quote from [{n}] {why}")
+                    cp.append(f"quote from source {n} {why}" + ("" if src or n in by_n else
+                              " (use the source number from web_search / cite_as_source, and read the page first)"))
                 else:
-                    evid.append({"setting": str(ev.get("setting", "")), "n": n,
+                    evid.append({"setting": str(ev.get("setting", "")), "n": n,  # source number
                                  "quote": redact(" ".join(str(ev["quote"]).split()))})
             proc = str(c.get("process") or ctx["failed_tasks"][0]["process"]).split(":")[-1]
             for k, v in settings.items():
@@ -706,8 +721,8 @@ class Agent:
                         self.outputs[self.n] = text if ok else ""
                         shown = text if ok else text
                         self._record(phase, name, args, ok, self._summary(name, args, text, ok), shown[:2000])
-                        messages.append({"role": "tool", "tool_call_id": tc["id"],
-                                         "content": f"[call #{self.n}] " + text})
+                        prefix = f"[call #{self.n}] " if phase == "debug" else ""
+                        messages.append({"role": "tool", "tool_call_id": tc["id"], "content": prefix + text})
                         if finished:
                             done = True
                     if done and phase == "decide":

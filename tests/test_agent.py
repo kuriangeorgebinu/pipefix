@@ -105,7 +105,7 @@ def script():
         [("finish_debug", {"process": "SORT_READS", "tag": "sample1", "failure_class": "out_of_memory", "exit_code": 1,
                            "memory_requested_gb": 2, "cpus": 2,
                            "root_cause": "The script allocates a 12 GB buffer but the task had 2 GB; Python raised MemoryError (exit 1).",
-                           "evidence": [{"call": 3, "excerpt": "MemoryError"},
+                           "evidence": [{"call": 3, "excerpt": '"lines": ["[sort_reads] allocating a 12 GB sort buffer", "MemoryError"'},
                                         {"call": 7, "excerpt": "--buffer-gb ${params.sort_buffer_gb}"}]})],
         [("web_search", {"query": "HealthOmics task out of memory s3://x/y 5472488", "site": "aws"})],
         [("web_search", {"query": "nextflow errorStrategy retry memory", "site": "nextflow"})],
@@ -221,3 +221,18 @@ def test_stops_cleanly_when_a_step_cannot_finish(repo):
     turns = script()[:1] + [[("omics_get_run", {"id": "5472488"})]] * 40
     res, _, _ = run_agent(repo, turns=turns)
     assert "did not finish within its limits" in res.error and res.phase_reached == "debug" and res.patch is None
+
+
+def test_citing_the_call_that_read_a_page_maps_to_that_source(repo):
+    turns = script()
+    i = next(k for k, t in enumerate(turns) if t[0][0] == "finish_research")
+    cands = json.loads(json.dumps(GOOD_CANDIDATES))
+    cands[0]["evidence"][0]["source"] = 13            # call #13 was web_read_page(source=1)
+    turns[i] = [("finish_research", {"candidates": cands})]
+    res, _, llm = run_agent(repo, turns=turns)
+    assert res.done, res.error
+    assert res.candidates[0]["evidence"][0]["n"] == 1
+    # research outputs carry source numbers, not call numbers
+    tool_msgs = [m["content"] for m in llm.requests[-1]["messages"] if m["role"] == "tool"]
+    assert any('"cite_as_source": 1' in t for t in tool_msgs)
+    assert all(not t.startswith("[call #") for t in tool_msgs if "cite_as_source" in t)
