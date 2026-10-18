@@ -407,6 +407,20 @@ def test_hard_rules(repo, settings, extra, why):
     assert why in st.output and not res.candidates[0]["valid"] if st.ok else why in st.output, st.output
 
 
+def test_a_headroom_policy_input_and_a_table_row_quote(repo):
+    deriv = {"memory": {"formula": "ceil(need_gib * headroom / (1 - reserve))", "inputs": {
+        **DERIV_15["memory"]["inputs"], "headroom": {"value": 1.15, "policy": "safety headroom"}}}}
+    a = {**GOOD_CANDIDATES[0], "derivations": deriv,
+         "evidence": [{"setting": "memory", "source": 1, "quote": Q_MEM}, {"source": 1, "quote": "omics.r.large instance"}]}
+    res, _, _ = run_agent(repo, turns=with_research([a, GOOD_CANDIDATES[1]]))
+    assert res.done, res.error
+    assert res.candidates[0]["derivations"]["memory"]["inputs"]["headroom"]["policy"] == "safety headroom"
+    bad = {**a, "derivations": {"memory": {**deriv["memory"], "inputs": {
+        **deriv["memory"]["inputs"], "headroom": {"value": 2.5, "policy": "lots"}}}}}
+    res, _, _ = run_agent(repo, turns=with_research([bad, GOOD_CANDIDATES[1]], tries=4))
+    assert "between 1.0 and 1.5" in first(res, "finish_research").output
+
+
 def test_healthomics_sizing_must_cite_the_instance_docs(repo):
     a = {**GOOD_CANDIDATES[0], "evidence": GOOD_CANDIDATES[0]["evidence"][:1]}
     res, _, _ = run_agent(repo, turns=with_research([a, GOOD_CANDIDATES[1]], tries=4))

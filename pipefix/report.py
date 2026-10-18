@@ -46,6 +46,8 @@ def pr_title(patch: Patch) -> str:
 
 
 def _ev(e: dict) -> str:
+    if e.get("policy"):
+        return f"policy ({_md(e['policy'])})"
     where = f"call #{e['call']} `{e.get('tool', '')}`" if e.get("call") is not None else f"source [{e.get('source')}]"
     return f"{where}: \"{_md(e.get('quote') or e.get('excerpt') or '')[:300]}\""
 

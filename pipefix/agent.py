@@ -50,6 +50,7 @@ MAX_ROUNDS = 3
 OUT_CHARS = 7000
 S3_TASK_FILE = re.compile(r"(^|/)\.(command\.(run|sh|log|err|out|trace|begin)|exitcode)$")
 _ACCOUNT = re.compile(r"(?<!\d)\d{12}(?!\d)")
+INSTANCE = r"omics\.[a-z0-9]+\.[a-z0-9]+"
 SETTING_KEYS = r"(memory|time|cpus|errorStrategy|maxRetries|queue|disk|resourceLimits)"
 
 # ---------- read-only AWS policy (a safety policy, not knowledge about the failure) ----------
@@ -89,7 +90,7 @@ CANDIDATES = _p("array", "candidate solutions", items={
                         "setting -> {formula, inputs}. formula: arithmetic over the input names "
                         "(+ - * / ** ceil floor max min round), giving the first-attempt number of the value. "
                         "inputs: name -> {value: number, call: #n OR source: n, quote: verbatim text that shows "
-                        "that number}"},
+                        "that number}; one safety headroom factor may instead be {value: 1.0-1.5, policy: 'why'}"},
         "pros": {"type": "string"}, "cons": {"type": "string"},
         "evidence": {"type": "array", "items": {"type": "object", "properties": {
             "setting": {"type": "string", "description": "the setting this quote supports"},
@@ -224,8 +225,9 @@ HARD RULES (breaking one gets your call refused):
   cpus "N", maxRetries "N", errorStrategy "{ task.exitStatus in <codes> ? 'retry' : 'finish' }",
   resourceLimits "[ memory: N.GB ]".
 - NUMBERS ARE DERIVED, NEVER GUESSED: every memory/time/cpus/disk value needs a derivation: a formula over named
-  inputs, each input quoted from evidence that shows it. pipefix recomputes it. State every constant you use
-  (e.g. a headroom factor or a platform reserve) as an input quoted from a source when it is a platform fact.
+  inputs, each input quoted from evidence that shows it. pipefix recomputes it. Platform facts (e.g. a memory
+  reserve) are inputs quoted from the docs. A safety headroom is a policy choice, not a fact: give it as one input
+  {value: 1.15, policy: "safety headroom"} (1.0-1.5). Rows of a docs table can be quoted as they appear.
 - Out of memory: measure what the tool's own command needs (its flags, threads x per-thread memory, heap,
   buffers), add a safety headroom of about 15% on top of it (the process also needs memory beyond its
   buffer: interpreter, libraries, I/O), account for any memory the platform keeps for itself (from the
@@ -877,6 +879,7 @@ class Agent:
         if target is None:
             return f"the value must be in an accepted form so its number can be checked (e.g. {_example(k)})", {}
         names, traced = {}, {}
+        policies = 0
         for name, inp in d["inputs"].items():
             if not re.fullmatch(r"[A-Za-z_]\w{0,40}", str(name)):
                 return f"input name {name!r} is not a plain name", {}
@@ -884,6 +887,14 @@ class Agent:
                     isinstance(inp.get("value"), bool):
                 return f"input {name} needs a numeric value, where it comes from (call or source) and a quote", {}
             val = float(inp["value"])
+            if inp.get("policy") and inp.get("call") is None and inp.get("source") is None:
+                policies += 1
+                if policies > 1 or not 1.0 <= val <= 1.5:
+                    return (f"input {name}: only one policy input is allowed, a safety headroom factor between 1.0 "
+                            "and 1.5; every other input is a fact and needs a quote"), {}
+                names[str(name)] = val
+                traced[str(name)] = {"value": val, "policy": redact(str(inp["policy"]))[:200]}
+                continue
             good, bad = self._verify([inp])
             if bad:
                 return f"input {name}: {bad[0]}", {}
@@ -925,7 +936,9 @@ class Agent:
             raw_ev = [e for e in (c.get("evidence") or []) if isinstance(e, dict)]
             evid = []
             for e in raw_ev:
-                good, bad = self._verify([e], strict_source=e.get("source") is not None or _int(e.get("call")) in self.read_by_call)
+                row = bool(re.search(INSTANCE, str(e.get("quote", "")), re.I)) and len(_norm(str(e.get("quote", "")))) >= 10
+                good, bad = self._verify([e], strict_source=(e.get("source") is not None or _int(e.get("call"))
+                                                             in self.read_by_call) and not row)
                 notes += [f"evidence not used: {b}" for b in bad]
                 for g in good:
                     lm = re.search(SETTING_KEYS + r"\s*$", str(e.get("setting", "")).strip())
@@ -1016,12 +1029,13 @@ class Agent:
             if code is not None and codes is not None and code not in codes:
                 out.append(f"maxRetries has no effect: exit {code} is not retried")
         if self.inv.platform == "healthomics" and ({"memory", "cpus"} & set(settings)):
-            inst = r"omics\.[a-z0-9]+\.[a-z0-9]+"
+            inst = INSTANCE
             if not any(e.get("source") and re.search(inst, e["quote"], re.I) for e in evid) and not any(
                     i.get("source") and re.search(inst, i["quote"], re.I)
                     for dv in derived.values() for i in dv["inputs"].values()):
                 out.append("a HealthOmics memory/cpus change must cite the HealthOmics instance-type documentation: a "
-                           "verified quote naming the instance (omics.x.y) it lands on")
+                           "verified quote naming the instance (omics.x.y) it lands on; a row of the instance table such as "
+                           "'omics.r.large 2 16 GiB' is accepted")
         return out
 
     def _check_decision(self, a: dict) -> dict:
@@ -1201,7 +1215,7 @@ class Agent:
                       sources=[{k: s.get(k) for k in ("n", "title", "url", "snippet", "site", "read")} for s in self.sources])
         why = f"{c['title']}: {c['rationale']}"
         for k, d in (c.get("derivations") or {}).items():
-            ins = ", ".join(f"{n}={i['value']:g} ({'call #' + str(i['call']) if i.get('call') else 'source ' + str(i.get('source'))})"
+            ins = ", ".join(f"{n}={i['value']:g} ({'call #' + str(i['call']) if i.get('call') else 'source ' + str(i['source']) if i.get('source') else 'policy: ' + str(i.get('policy'))})"
                             for n, i in d["inputs"].items())
             why += f" [{k} = {d['formula']} with {ins}]"
         if c["settings"]:
