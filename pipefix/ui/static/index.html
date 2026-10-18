@@ -878,7 +878,7 @@ async function refreshHistory() {
   ul.innerHTML = jobs.map(j => {
     const bars = j.failures == null ? "" : Array.from({ length: Math.min(j.failures, 8) }, (_, i) => `<i class="${i < j.fixed ? "fx" : "nd"}"></i>`).join("");
     const when = new Date(j.created).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-    const sub = j.status === "running" ? "Running" : j.status === "failed" ? "Couldn't finish" :
+    const sub = j.status === "running" ? "Running" : j.status === "failed" ? "Couldn't finish" : j.status === "stopped" ? "Stopped, no change made" :
       `${j.failures} failed, ${j.fixed} fixable`;
     return `<li><button type="button" data-id="${j.id}" aria-current="${j.id === CURRENT}"><span>${esc(j.label)}</span><span class="tally" aria-hidden="true">${bars}</span><span class="when">${when}, ${sub}</span></button></li>`;
   }).join("");

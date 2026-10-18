@@ -73,7 +73,8 @@ class FakeAws:
 DOC_AWS = ("<main><p>Container resource allocations are hard limits. If a task runs out of memory, the task generates "
            "an error log and exits.</p><p>HealthOmics reserves a small amount of memory (5%) for management and "
            "logging agents.</p><p>The omics.r.large instance has 2 vCPUs and 16 GiB of memory.</p><p>Include at least 15% "
-           "headroom in allocated memory to account for background processes.</p></main>")
+           "headroom in allocated memory to account for background processes.</p>"
+           "<table><tr><td>omics.r.large</td><td>2</td><td>16 GiB</td></tr></table></main>")
 DOC_NF = ("<main><p>The errorStrategy directive allows you to define how an error condition is managed by the "
           "process.</p><p>Use task.attempt to increase the memory on each retry, together with maxRetries.</p>"
           "<p>Exit status 137 means the process was killed with SIGKILL, often by the out of memory killer, so a "
@@ -101,7 +102,8 @@ GOOD_CANDIDATES = [
 ]
 DECISION_A = {"chosen": "A", "reasons": "A sizes memory to what the script really allocates (12 GiB) with headroom, "
                                         "so attempt 1 passes; B changes the tool's behaviour.",
-              "why_not": {"B": "changes the tool and slows the sort"}, "risks": "bigger instance"}
+              "why_not": {"B": "changes the tool and slows the sort"}, "risks": "bigger instance",
+              "lands_on": {"instance": "omics.r.large", "source": 1}}
 
 CHECK_ROOT = {"covers": "root_cause", "claim": "the 12 GB buffer does not fit 2 GB", "finding": "confirmed",
               "explanation": "the log shows it", "evidence": [{"call": LOG, "quote": "allocating a 12 GB sort buffer"}]}
@@ -229,8 +231,9 @@ def test_arithmetic_numbers_and_quotes():
     assert first_number("memory", "{ 15.GB * task.attempt }") == 15 and first_number("cpus", "4") == 4
     assert first_number("memory", "{ [16.GB * task.attempt, 30.GB].min() }") is None    # never a guess
     assert first_number("memory", "{ 2 * task.attempt }") is None
-    assert _shows("allocating a 12 GB sort buffer", 12) and _shows("reserves (5%)", 0.05) and _shows("reserves (5%)", 0.95) and _shows("-Xmx30g", 30)
+    assert _shows("allocating a 12 GB sort buffer", 12) and _shows("reserves (5%)", 0.05) and _shows("reserves (5%)", 0.95, "usable_fraction") and _shows("-Xmx30g", 30)
     assert not _shows("allocating a 12 GB sort buffer", 1.2) and not _shows("version 112", 12)
+    assert not _shows("reserves (5%)", 0.95, "headroom")          # 5% cannot back a 0.95 headroom
 
 
 def test_evidence_may_join_verbatim_pieces_in_order_and_close_together():
@@ -260,6 +263,7 @@ def test_aws_policy_is_read_only_and_never_reads_secrets_or_data():
 
 
 def test_the_api_reference_tool_documents_operations_and_parameters(repo):
+    pytest.importorskip("botocore")
     agent = Agent(None, repo, {"omics_run": "1"})
     ops = agent._describe_api({"service": "omics"})["read_only_operations"]
     assert "GetRun" in ops and "GetRunTask" in ops and "StartRun" not in ops and "GetReadSet" not in ops
@@ -340,6 +344,7 @@ def test_mr_step_uses_the_opener_only_when_allowed(repo):
 
 
 def test_the_agent_composes_parameters_and_bad_ones_are_explained(repo):
+    pytest.importorskip("botocore")
     turns = script()
     turns.insert(1, [aws("omics", "GetRun", {"runId": "5472488"})])
     turns.insert(2, [aws("omics", "GetRunz", {"id": "5472488"})])
@@ -731,3 +736,41 @@ def test_a_root_cause_check_that_names_the_instance_it_ran_on_is_not_a_landing_c
     res, _, _ = run_agent(repo, turns=turns)
     st = next(s for s in res.steps if s.tool == "finish_review")
     assert st.ok, st.output
+
+
+def _decide(turns, **change):
+    i = turn_of(turns, "finish_decision")
+    turns[i:i] = [[R("finish_decision", {**DECISION_A, **change})]]
+    return turns
+
+
+def test_the_decision_must_say_where_it_lands_and_be_true_about_it(repo):
+    two = {**GOOD_CANDIDATES[0], "evidence": GOOD_CANDIDATES[0]["evidence"] + [
+        {"source": 1, "quote": "omics.m.xlarge 4 16 GiB"}, {"source": 1, "quote": "omics.r.large 2 16 GiB"}]}
+    turns = with_research([two, GOOD_CANDIDATES[1]])
+    turns = _decide(turns, lands_on={})                                                    # missing
+    turns = _decide(turns, lands_on={"instance": "omics.m.xlarge", "source": 1})          # fits, not the smallest
+    turns = _decide(turns, reasons=DECISION_A["reasons"] + " omics.m.xlarge 4 / 16 GiB is too small.")
+    turns = _decide(turns, reasons=DECISION_A["reasons"] + ' The docs say {source: 1, quote: "HealthOmics never '
+                                                             'reserves any memory for its agents at all"}.')
+    res, _, _ = run_agent(repo, turns=turns, aws_doc=DOC_TWO_FAMILIES)
+    outs = [s.output for s in res.steps if s.tool == "finish_decision" and not s.ok]
+    # _decide inserts each attempt before the previous ones, so they run in reverse order
+    assert "the text cites source 1" in outs[0]
+    assert "calls omics.m.xlarge too small, but it holds" in outs[1]
+    assert "not the smallest fit" in outs[2] and "omics.r.large" in outs[2]
+    assert "say where the request lands" in outs[3]
+    assert res.decision["lands_on"]["instance"] == "omics.r.large"
+
+
+def test_a_reviewer_landing_claim_under_other_still_needs_every_family(repo):
+    a = {**GOOD_CANDIDATES[0], "evidence": GOOD_CANDIDATES[0]["evidence"] + [
+        {"source": 1, "quote": "omics.m.xlarge 4 16 GiB"}, {"source": 1, "quote": "omics.r.large 2 16 GiB"}]}
+    turns = with_research([a, GOOD_CANDIDATES[1]])
+    k = turn_of(turns, "finish_review")
+    land = {"covers": "other", "claim": "it lands on omics.r.large", "finding": "confirmed", "explanation": "x",
+            "evidence": [{"source": 1, "quote": "omics.r.large 2 16 GiB"}]}
+    turns.insert(k, [R("finish_review", {"verdict": "agree", "checks": [CHECK_ROOT, CHECK_MEM, land]})])
+    res, _, _ = run_agent(repo, turns=turns, aws_doc=DOC_TWO_FAMILIES)
+    st = next(s for s in res.steps if s.tool == "finish_review")
+    assert not st.ok and "where the request lands (other)" in st.output, st.output

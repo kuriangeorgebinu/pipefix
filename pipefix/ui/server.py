@@ -236,7 +236,7 @@ def _run_agent(job: dict, req: dict, clients, repo: Path, goal: dict) -> None:
     for s in job["stages"]:
         if s["state"] == "running":
             s["state"] = "done"
-    job["status"] = "done"
+    job["status"] = "stopped" if res.error else "done"   # stopped: e.g. the experts did not agree; nothing opened
 
 
 def _apply(job: dict) -> dict:

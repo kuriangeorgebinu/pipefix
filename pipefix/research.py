@@ -228,7 +228,7 @@ Rules:
                  ranges (a..b), lists [a, b], parentheses and +;  or one of 'retry' 'finish' 'ignore' 'terminate'
   maxRetries "N"   queue "'queue-name'"   disk "N.GB"
 - Size memory from what the task actually needs: read process_source for tool flags that set memory or buffers
-  (e.g. --buffer-gb, -Xmx, sort -S, --mem, -m) and resolve params.* from platform.params; leave headroom (~25%).
+  (e.g. --buffer-gb, -Xmx, sort -S, --mem, -m) and resolve params.* from platform.params; any headroom must be backed by a quoted source.
   Never exceed platform.largest_task_memory_gb when it is given.
 - If you rely on retries, make sure errorStrategy actually retries the observed exit_code; if the existing rule
   doesn't cover it, write an errorStrategy that keeps the existing codes and adds it.

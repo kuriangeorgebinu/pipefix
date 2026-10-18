@@ -97,7 +97,9 @@ CANDIDATES = _p("array", "candidate solutions", items={
             "source": {"type": "integer"}, "call": {"type": "integer"},
             "quote": {"type": "string"}}, "required": ["quote"]}}},
     "required": ["id", "title", "settings", "rationale"]})
-DECISION = {"chosen": _p("string", "candidate id"),
+DECISION = {"lands_on": _p("object", "HealthOmics memory/cpus change only: {instance: 'omics.x.y', source: n} - the "
+                                     "instance the chosen request lands on, from the instance table page you read"),
+            "chosen": _p("string", "candidate id"),
             "reasons": _p("string", "why this one is best for THIS failure, against the evidence"),
             "why_not": _p("object", "candidate id -> why it lost (every other candidate)"),
             "risks": _p("string", "what could still go wrong")}
@@ -246,7 +248,9 @@ HARD RULES (breaking one gets your call refused):
 - On HealthOmics a memory/cpus change must cite the HealthOmics instance-type documentation (which instance it
   lands on), with a quoted row from EVERY instance family the page lists that could hold the request, so the
   smallest fit is shown, not assumed. A recommended headroom and a platform memory reserve are different
-  things: if the docs recommend headroom, it is its own input next to the reserve.
+  things: if the docs recommend headroom, it is its own input next to the reserve. In finish_decision give
+  lands_on {instance, source}: pipefix checks it against the table you quote. Every sentence must be true: do not
+  call an instance too small if it holds the request. Inline citations must be verbatim from the cited source.
 - THINK OUT LOUD: before each tool call write 1-3 sentences of reasoning, and give every call a 'reason'.
 - Be efficient. Account IDs appear as <account-id>; pass them as is."""
 
@@ -387,12 +391,15 @@ def _excerpt_in(excerpt: str, output: str) -> bool:
         start = i + 1
 
 
-def _shows(quote: str, val: float) -> bool:
-    """The quote shows this number (12 in '12 GB', 0.05 in '5%', 30 in '-Xmx30g')."""
+def _shows(quote: str, val: float, name: str = "") -> bool:
+    """The quote shows this number (12 in '12 GB', 0.05 in '5%', 30 in '-Xmx30g'). The complement of a percentage
+    (0.95 from '5%') only counts for an input whose name says it is the part left over (usable/available/...)."""
     q = (quote or "").replace(",", "")
     nums = [float(x) for x in re.findall(r"(?<![\d.])(\d+(?:\.\d+)?)(?!\d)", q)]
     pct = [float(x) / 100 for x in re.findall(r"(\d+(?:\.\d+)?)\s*%", q)]
-    nums += pct + [round(1 - p, 10) for p in pct]          # 5% reserve -> 0.05, or the 0.95 that is left
+    nums += pct
+    if re.search(r"usable|available|remaining|left|after", name or "", re.I):
+        nums += [round(1 - p, 10) for p in pct]
     return any(abs(n - val) <= 1e-9 * max(1.0, abs(val)) for n in nums)
 
 
@@ -520,6 +527,20 @@ def _shape(shape, depth: int = 0) -> dict:
 
 FAMILY = re.compile(r"omics\.([a-z]+)\.[a-z0-9]+", re.I)
 HEADROOM_DOC = re.compile(r"headroom[^.]{0,80}?\d+(?:\.\d+)?\s*%|\d+(?:\.\d+)?\s*%[^.]{0,40}?headroom", re.I)
+
+
+ROW = re.compile(r"(omics\.[a-z]+\.[a-z0-9]+)\s*\|?\s*(\d+)\s*\|?\s*(\d+(?:\.\d+)?)\s*GiB", re.I)
+TOO_SMALL = re.compile(r"too small|not enough|does not fit|doesn't fit|do not fit|don't fit|insufficient|too little|"
+                       r"cannot hold|can't hold|cannot fit|can't fit", re.I)
+CITED = [  # how agents cite inline: {source: 1, quote: "..."} / "..." (source 1) / "..." [1]
+    re.compile(r"(source|call)\s*:?\s*#?(\d+)\s*,\s*quote\s*:?\s*[\"\u201c]([^\"\u201d\\]{12,500})[\"\u201d]", re.I),
+    re.compile(r"[\"\u201c]([^\"\u201d\\]{20,500})[\"\u201d]\s*\(\s*(source|call)\s*\[?#?(\d+)\]?\s*\)", re.I),
+]
+
+
+def _rows(page: str) -> dict[str, tuple[float, float]]:
+    """Instance-table rows on a docs page: name -> (vCPUs, GiB)."""
+    return {m.group(1).lower(): (float(m.group(2)), float(m.group(3))) for m in ROW.finditer(page or "")}
 
 
 def _family_gap(quotes: list[str], page: str) -> list[str]:
@@ -943,7 +964,7 @@ class Agent:
             good, bad = self._verify([inp])
             if bad:
                 return f"input {name}: {bad[0]}", {}
-            if not _shows(good[0]["quote"], val):
+            if not _shows(good[0]["quote"], val, str(name)):
                 return (f"input {name}={val:g}: the quote does not show that number: {good[0]['quote'][:90]!r}. "
                         "Use the number exactly as the quote shows it and do any conversion in the formula"), {}
             names[str(name)] = val
@@ -1161,9 +1182,75 @@ class Agent:
             raise _Refused(f"say why each other candidate lost; missing: {missing}")
         if len(str(a.get("reasons", "")).strip()) < 40:
             raise _Refused("reasons are too thin; compare against the evidence")
-        return {"chosen": chosen, "reasons": redact(str(a["reasons"]))[:3000],
-                "why_not": {k: redact(v)[:1000] for k, v in why_not.items()},
-                "risks": redact(str(a.get("risks", "")))[:1200]}
+        texts = [str(a.get("reasons", "")), str(a.get("risks", "")), *why_not.values()]
+        problems = self._landing_problems(ids[chosen], a.get("lands_on"), texts) + self._citation_problems(texts)
+        if problems:
+            raise _Refused("; ".join(problems))
+        out = {"chosen": chosen, "reasons": redact(str(a["reasons"]))[:3000],
+               "why_not": {k: redact(v)[:1000] for k, v in why_not.items()},
+               "risks": redact(str(a.get("risks", "")))[:1200]}
+        if isinstance(a.get("lands_on"), dict) and a["lands_on"].get("instance"):
+            out["lands_on"] = {"instance": str(a["lands_on"]["instance"]).lower(), "source": _int(a["lands_on"].get("source"))}
+        return out
+
+    def _request(self, c: dict) -> tuple[float | None, float | None]:
+        """(cpus, memory GiB) the candidate requests on its first attempt (changed or in effect now)."""
+        cur = self._current(c["process"])
+        mem = first_number("memory", c["settings"].get("memory") or cur.get("memory", {}).get("value", ""))
+        cpu = first_number("cpus", c["settings"].get("cpus") or cur.get("cpus", {}).get("value", ""))
+        return cpu, mem
+
+    def _landing_problems(self, c: dict, lands_on, texts: list[str]) -> list[str]:
+        """Where the request lands, checked against the instance table the agent itself read (not a built-in one):
+        the named instance must fit and be the smallest fit, and no text may call a fitting instance too small."""
+        if self.inv.platform != "healthomics" or not ({"memory", "cpus"} & set(c["settings"])):
+            return []
+        cpu, mem = self._request(c)
+        if not isinstance(lands_on, dict) or not lands_on.get("instance"):
+            return ["say where the request lands: lands_on {instance, source} from the instance-type page you read"]
+        src = self._source(lands_on.get("source"))
+        rows = _rows(src.get("text", "")) if src else {}
+        if not rows:
+            return [f"lands_on.source {lands_on.get('source')} is not a page you read that lists instance rows "
+                    "(name, vCPUs, GiB)"]
+        name = str(lands_on["instance"]).strip().lower()
+        if name not in rows:
+            return [f"{name} is not in the instance table of source {src['n']}"]
+        if mem is None or cpu is None:
+            return []
+        fits = {n: r for n, r in rows.items() if r[0] >= cpu and r[1] >= mem}
+        out = []
+        if name not in fits:
+            out.append(f"{name} ({rows[name][0]:g} vCPU / {rows[name][1]:g} GiB) cannot hold {cpu:g} vCPU / {mem:g} GiB")
+        elif fits:
+            best = min(fits.values(), key=lambda r: (r[1], r[0]))
+            smaller = sorted(n for n, r in fits.items() if (r[1], r[0]) < (rows[name][1], rows[name][0]))
+            if smaller:
+                out.append(f"{name} is not the smallest fit for {cpu:g} vCPU / {mem:g} GiB on source {src['n']}: "
+                           f"{smaller} also hold it (smallest {best[0]:g} vCPU / {best[1]:g} GiB)")
+        for t in texts:
+            for sent in re.split(r"(?<=[.;])\s+|\n", t):
+                if not TOO_SMALL.search(sent):
+                    continue
+                for inst in set(re.findall(INSTANCE, sent, re.I)):
+                    inst = inst.lower()
+                    if inst in fits:
+                        out.append(f"the text calls {inst} too small, but it holds {cpu:g} vCPU / {mem:g} GiB "
+                                   f"({rows[inst][0]:g} vCPU / {rows[inst][1]:g} GiB on source {src['n']}); say what is "
+                                   "actually true (e.g. it has more vCPUs than needed)")
+        return out
+
+    def _citation_problems(self, texts: list[str]) -> list[str]:
+        """Inline citations in prose ({source: n, quote: "..."} or "..." (source n)) must be verbatim in that source."""
+        out = []
+        for t in texts:
+            for rx in CITED:
+                for m in rx.finditer(t or ""):
+                    kind, n, q = (m.group(1), m.group(2), m.group(3)) if rx is CITED[0] else (m.group(2), m.group(3), m.group(1))
+                    good, bad = self._verify([{kind.lower(): int(n), "quote": q}])
+                    if bad:
+                        out.append(f"the text cites {kind.lower()} {n} for {q[:70]!r}, but {bad[0]}")
+        return out[:6]
 
     def _finish_decision(self, a: dict) -> str:
         self.res.decision = self._check_decision(a)
@@ -1179,7 +1266,7 @@ class Agent:
                 "diagnosis": self.res.diagnosis,
                 "proposal": {k: c[k] for k in ("id", "title", "process", "settings", "rationale", "derivations",
                                                "evidence")},
-                "decision": {k: self.res.decision.get(k) for k in ("reasons", "risks")},
+                "decision": {k: self.res.decision.get(k) for k in ("reasons", "risks", "lands_on")},
                 "alternatives": [{"id": o["id"], "title": o["title"], "settings": o["settings"],
                                   "why_not": self.res.decision["why_not"].get(o["id"], ""), "valid": o["valid"]}
                                  for o in self.res.candidates if o["id"] != c["id"]],
@@ -1214,11 +1301,11 @@ class Agent:
                 problems.append(f"'{finding}' check of {cov} needs evidence that is about {cov} (a quote about an "
                                 "unrelated fact does not confirm or refute the number)")
                 continue
-            if finding in ("confirmed", "wrong") and cov in ("memory", "cpus") and \
+            if finding in ("confirmed", "wrong") and cov != "root_cause" and \
                     re.search(INSTANCE, str(ch.get("claim", "")), re.I):
                 gaps = self._instance_gaps([g for g in good if g.get("source")])
                 if gaps or not any(g.get("source") and re.search(INSTANCE, g["quote"], re.I) for g in good):
-                    problems.append(f"'{finding}' check of where the {cov} request lands needs rows of the instance "
+                    problems.append(f"'{finding}' check of where the request lands ({cov}) needs rows of the instance "
                                     "table quoted from the docs page you read ({source, quote}), at least one row per "
                                     "instance family the page lists"
                                     + (": " + "; ".join(gaps) if gaps else "; no row was quoted from a page"))
@@ -1258,6 +1345,9 @@ class Agent:
             good, bad = self._verify(ans.get("evidence"))
             answers.append({"question": redact(str(ans.get("question", "")))[:600],
                             "answer": redact(str(ans.get("answer", "")))[:1500], "evidence": good, "bad": bad})
+        cite = self._citation_problems([x["answer"] for x in answers])
+        if cite:
+            raise _Refused("; ".join(cite))
         if action == "defend":
             if self._wrong:
                 raise _Refused("an expert found claims WRONG with evidence (" + "; ".join(self._wrong)[:400]
@@ -1375,7 +1465,9 @@ class Agent:
                         error_lines=[e["excerpt"] for e in d.get("evidence", [])],
                         context={"process_name_source": "agent diagnosis"})
         ev = [f"#{e['call']} {e['tool']}: {e['excerpt']}" for e in d.get("evidence", [])]
-        return [Diagnosis(f, FailureClass(d["failure_class"]), 0.9, ev, d.get("root_cause", ""),
+        # not a model guess: more verified evidence and the experts' agreement raise it
+        conf = min(0.8, 0.4 + 0.1 * len(d.get("evidence", []))) + (0.15 if self.res.review.get("agreed") else 0)
+        return [Diagnosis(f, FailureClass(d["failure_class"]), round(conf, 2), ev, d.get("root_cause", ""),
                           "See the agent's chosen solution.")]
 
     def _implement(self) -> str:
