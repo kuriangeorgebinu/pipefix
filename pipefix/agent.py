@@ -575,8 +575,8 @@ class Agent:
                     cp.append(f"{k} has no verified quote about {k} from a page you read")
                 for e in support:
                     e.setdefault("supports", []).append(k)
-            for e in evid:   # a quote may support several settings; show them all
-                e["setting"] = ", ".join(e.pop("supports", [])) or e["setting"]
+            for e in evid:   # a quote may support several settings; one that supports none is only context
+                e["setting"] = ", ".join(e.pop("supports", [])) or "context"
             if not evid:
                 cp.append("no verified quote at all")
             if cp:

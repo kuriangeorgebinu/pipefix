@@ -292,3 +292,14 @@ def test_a_config_fixable_failure_needs_a_valid_config_candidate(repo):
     assert not first.ok and "time has no verified quote about time" in first.output
     assert "fixable by config" in first.output
     assert res.done and res.decision["chosen"] == "A"
+
+
+def test_a_quote_that_supports_no_setting_is_labelled_context(repo):
+    turns = script()
+    i = next(k for k, t in enumerate(turns) if t[0][0] == "finish_research")
+    a = json.loads(json.dumps(GOOD_CANDIDATES[0]))
+    a["evidence"].append({"setting": "memory", "source": 2, "quote": Q_ES})     # labelled memory, not about memory
+    turns[i] = [("finish_research", {"candidates": [a, GOOD_CANDIDATES[1]]})]
+    res, _, _ = run_agent(repo, turns=turns)
+    assert res.done, res.error
+    assert res.candidates[0]["evidence"][-1]["setting"] == "context"
