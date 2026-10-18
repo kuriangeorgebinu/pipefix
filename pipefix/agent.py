@@ -359,7 +359,7 @@ MAX_GAP = 400
 def _excerpt_in(excerpt: str, output: str) -> bool:
     """Verbatim, or verbatim pieces joined with '...' that appear in this order, close together (each >= 6 chars)."""
     pieces = [p for p in (_loose(x) for x in re.split(r"\s*(?:\.\.\.|…)\s*", excerpt or "")) if p]
-    if not pieces or any(len(p) < 6 for p in pieces):
+    if not pieces or any(len(p) < (6 if len(pieces) > 1 else 4) for p in pieces):
         return False
     hay = _loose(output)
     start = 0
@@ -1087,7 +1087,9 @@ class Agent:
         if not ids[chosen]["valid"]:
             valid = [i for i, c in ids.items() if c["valid"]]
             raise _Refused(f"candidate {chosen} failed the checks: {ids[chosen]['problems']}. Valid candidates: "
-                           f"{valid}. If none of them is right, call reopen_research")
+                           f"{valid}." + (" If none of them is right, call reopen_research" if self.res.phase_reached == "decide"
+                                          else " Fix the candidate (its derivation inputs must quote the numbers "
+                                               "exactly as shown) or choose a valid one"))
         why_not = {str(k): str(v) for k, v in (a.get("why_not") or {}).items()}
         missing = [i for i in ids if i != chosen and not why_not.get(i, "").strip()]
         if missing:

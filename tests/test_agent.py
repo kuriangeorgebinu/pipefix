@@ -236,6 +236,7 @@ def test_evidence_may_join_verbatim_pieces_in_order_and_close_together():
     assert not _excerpt_in("MemoryError ... allocating a 12 GB sort buffer", out)        # wrong order
     assert not _excerpt_in("allocating a 16 GB sort buffer ... MemoryError", out)          # not verbatim
     assert not _excerpt_in("allocating ... Me", out)                                       # piece too short
+    assert _excerpt_in("-m 2G", "samtools sort -@ 4 -m 2G -o x") and not _excerpt_in("-m", "-m 2G")
     far = '{"a": "allocating a buffer", "pad": "' + "x " * 400 + '", "b": "MemoryError"}'
     assert not _excerpt_in("allocating a buffer ... MemoryError", far)                     # spliced from far apart
 
