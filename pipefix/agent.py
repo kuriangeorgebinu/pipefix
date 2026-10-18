@@ -244,7 +244,9 @@ HARD RULES (breaking one gets your call refused):
   change cpus, time or disk unless evidence gives the new number. A retry rule keeps every code it retries now and
   may add only the observed exit code. maxRetries only matters if the observed exit code is retried.
 - On HealthOmics a memory/cpus change must cite the HealthOmics instance-type documentation (which instance it
-  lands on).
+  lands on), with a quoted row from EVERY instance family the page lists that could hold the request, so the
+  smallest fit is shown, not assumed. A recommended headroom and a platform memory reserve are different
+  things: if the docs recommend headroom, it is its own input next to the reserve.
 - THINK OUT LOUD: before each tool call write 1-3 sentences of reasoning, and give every call a 'reason'.
 - Be efficient. Account IDs appear as <account-id>; pass them as is."""
 
@@ -260,6 +262,8 @@ How to review:
   claimed, wrong arithmetic or constants, platform facts not backed by docs, a fix that would not pass on its
   first attempt, a margin (headroom) that is not backed by evidence or that moves the task to a bigger, costlier
   instance than the evidence requires, settings changed without justification, a retry of a deterministic error.
+- To confirm which instance a request lands on, quote a row from every instance family the docs list, not one
+  family. Do not read a recommended headroom as the platform reserve (or the reverse): they are separate.
 - If you think the margin is wrong, say what it should be and back that with evidence too; a demand without
   evidence is not a valid objection.
 - Check the root cause (covers 'root_cause') and EVERY setting the chosen candidate changes (covers = that
@@ -512,6 +516,17 @@ def _shape(shape, depth: int = 0) -> dict:
     if shape.type_name == "list" and depth < 2:
         out["items"] = _shape(shape.member, depth + 1)
     return out
+
+
+FAMILY = re.compile(r"omics\.([a-z]+)\.[a-z0-9]+", re.I)
+HEADROOM_DOC = re.compile(r"headroom[^.]{0,80}?\d+(?:\.\d+)?\s*%|\d+(?:\.\d+)?\s*%[^.]{0,40}?headroom", re.I)
+
+
+def _family_gap(quotes: list[str], page: str) -> list[str]:
+    """Instance families (omics.<family>.<size>) listed on the page that none of the quotes shows a row of."""
+    on_page = {f.lower() for f in FAMILY.findall(page or "")}
+    shown = {f.lower() for q in quotes for f in FAMILY.findall(q or "")}
+    return sorted(on_page - shown)
 
 
 def _focus(text: str, focus: str, width: int = 700, keep: int = 6) -> str:
@@ -1086,6 +1101,47 @@ class Agent:
                 out.append("a HealthOmics memory/cpus change must cite the HealthOmics instance-type documentation: a "
                            "verified quote naming the instance (omics.x.y) it lands on; a row of the instance table such as "
                            "'omics.r.large 2 16 GiB' is accepted")
+            else:
+                out += self._instance_gaps([e for e in evid if e.get("source")]
+                                           + [i for dv in derived.values() for i in dv["inputs"].values()
+                                              if i.get("source")])
+        if "memory" in derived:
+            out += self._headroom_rule(derived["memory"]["inputs"])
+        return out
+
+    def _instance_gaps(self, items: list[dict]) -> list[str]:
+        """A claim about where a request lands must look at every instance family the docs list, not one."""
+        out = []
+        by_src: dict[int, list[str]] = {}
+        for i in items:
+            if re.search(INSTANCE, i.get("quote", ""), re.I):
+                by_src.setdefault(i["source"], []).append(i["quote"])
+        for n, quotes in by_src.items():
+            src = self._source(n)
+            gap = _family_gap(quotes, src.get("text", "") if src else "")
+            if gap:
+                out.append(f"source {n} lists the instance families {sorted(set(FAMILY.findall(src['text'].lower())))}"
+                           f" but your quotes only show rows from "
+                           f"{sorted({f.lower() for q in quotes for f in FAMILY.findall(q)})}; quote a row from each of "
+                           f"{gap} that could hold this request too, so the smallest fit is shown, not assumed")
+        return out
+
+    def _headroom_rule(self, inputs: dict) -> list[str]:
+        """A docs headroom recommendation and a platform reserve are different things: each is its own input."""
+        read = [s for s in self.sources if s.get("read") and HEADROOM_DOC.search(s.get("text", ""))]
+        quotes = [i.get("quote", "") for i in inputs.values()]
+        out = []
+        if read and not any(re.search(r"headroom", q, re.I) for q in quotes):
+            out.append(f"a page you read recommends memory headroom (source {read[0]['n']}); decide the headroom "
+                       "yourself, but put it in the formula as its own input quoted from evidence (it is not the "
+                       "platform reserve)")
+        seen = {}
+        for name, i in inputs.items():
+            q = _norm(i.get("quote", ""))
+            if q and q in seen:
+                out.append(f"inputs {seen[q]} and {name} quote the same text; a reserve and a headroom are separate "
+                           "facts and need their own evidence")
+            seen.setdefault(q, name)
         return out
 
     def _check_decision(self, a: dict) -> dict:
@@ -1158,6 +1214,12 @@ class Agent:
                 problems.append(f"'{finding}' check of {cov} needs evidence that is about {cov} (a quote about an "
                                 "unrelated fact does not confirm or refute the number)")
                 continue
+            if finding in ("confirmed", "wrong") and re.search(INSTANCE, str(ch.get("claim", "")), re.I):
+                gaps = self._instance_gaps([g for g in good if g.get("source")])
+                if gaps or not any(g.get("source") and re.search(INSTANCE, g["quote"], re.I) for g in good):
+                    problems.append(f"'{finding}' check of where the request lands needs instance-table rows from "
+                                    "every family on the page: " + ("; ".join(gaps) or "quote the rows"))
+                    continue
             own = own or any(self._own(g, who) for g in good)
             checks.append({"covers": str(ch.get("covers", "other")).strip(), "claim": redact(str(ch.get("claim", "")))[:600],
                            "finding": finding, "explanation": redact(str(ch.get("explanation", "")))[:1500],

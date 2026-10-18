@@ -187,9 +187,11 @@ class ScriptedLLM:
         return DOC_AWS if "aws" in url else DOC_NF
 
 
-def run_agent(repo, turns=None, fake=None, **kw):
+def run_agent(repo, turns=None, fake=None, aws_doc=None, **kw):
     fake = fake or FakeAws()
     llm = ScriptedLLM(turns or script())
+    if aws_doc:
+        llm.get_text = lambda url, timeout=15: aws_doc if "aws" in url else DOC_NF
     agent = Agent(Clients(fake.factory, region="us-east-1"), repo, {"omics_run": "5472488"}, http=llm, **kw)
     return agent.run(), fake, llm
 
@@ -674,3 +676,48 @@ def test_a_claim_found_wrong_with_evidence_must_be_revised_not_defended(repo):
     res, _, _ = run_agent(repo, turns=turns)
     st = first(res, "finish_response")
     assert not st.ok and "cannot defend them: revise" in st.output
+
+
+DOC_TWO_FAMILIES = DOC_AWS.replace("</main>", "<table><tr><td>omics.m.large</td><td>2</td><td>8 GiB</td></tr>"
+                                   "<tr><td>omics.m.xlarge</td><td>4</td><td>16 GiB</td></tr>"
+                                   "<tr><td>omics.r.large</td><td>2</td><td>16 GiB</td></tr></table></main>")
+
+
+def test_a_landing_claim_must_show_every_instance_family_on_the_page(repo):
+    one = {**GOOD_CANDIDATES[0], "evidence": [{"setting": "memory", "source": 1, "quote": Q_MEM},
+                                              {"source": 1, "quote": "omics.m.xlarge 4 16 GiB"}]}
+    res, _, _ = run_agent(repo, turns=with_research([one, GOOD_CANDIDATES[1]], tries=4), aws_doc=DOC_TWO_FAMILIES)
+    out = first(res, "finish_research").output
+    assert "quote a row from each of ['r']" in out, out
+    both = {**one, "evidence": one["evidence"] + [{"source": 1, "quote": "omics.r.large 2 16 GiB"}]}
+    res, _, _ = run_agent(repo, turns=with_research([both, GOOD_CANDIDATES[1]]), aws_doc=DOC_TWO_FAMILIES)
+    assert first(res, "finish_research").ok, first(res, "finish_research").output
+
+
+def test_a_reviewer_landing_check_must_show_every_family(repo):
+    a = {**GOOD_CANDIDATES[0], "evidence": GOOD_CANDIDATES[0]["evidence"] + [
+        {"source": 1, "quote": "omics.m.xlarge 4 16 GiB"}, {"source": 1, "quote": "omics.r.large 2 16 GiB"}]}
+    turns = with_research([a, GOOD_CANDIDATES[1]])
+    k = turn_of(turns, "finish_review")
+    land = {"covers": "memory", "claim": "15 GB lands on omics.m.xlarge", "finding": "confirmed",
+            "explanation": "table", "evidence": [{"source": 1, "quote": "omics.m.xlarge 4 16 GiB"}]}
+    turns.insert(k, [R("finish_review", {"verdict": "agree", "checks": [CHECK_ROOT, CHECK_MEM, land]})])
+    res, _, _ = run_agent(repo, turns=turns, aws_doc=DOC_TWO_FAMILIES)
+    st = next(s for s in res.steps if s.tool == "finish_review")
+    assert not st.ok and "rows from every family" in st.output, st.output
+
+
+def test_headroom_and_reserve_are_separate_inputs(repo):
+    no_headroom = {**GOOD_CANDIDATES[0], "settings": {"memory": "{ 13.GB * task.attempt }"},
+                   "derivations": {"memory": {"formula": "ceil(need_gib / (1 - reserve))", "inputs": {
+                       k: v for k, v in DERIV_15["memory"]["inputs"].items() if k != "headroom"}}}}
+    res, _, _ = run_agent(repo, turns=with_research([no_headroom, GOOD_CANDIDATES[1]], tries=4))
+    assert "recommends memory headroom" in first(res, "finish_research").output
+    same = {**GOOD_CANDIDATES[0], "settings": {"memory": "{ 14.GB * task.attempt }"},
+            "derivations": {"memory": {"formula": "ceil(need_gib * (1 + h) / (1 - reserve))", "inputs": {
+                "need_gib": DERIV_15["memory"]["inputs"]["need_gib"],
+                "reserve": {"value": 0.05, "source": 1, "quote": "reserves a small amount of memory (5%)"},
+                "h": {"value": 0.05, "source": 1, "quote": "reserves a small amount of memory (5%)"}}}}}
+    res, _, _ = run_agent(repo, turns=with_research([same, GOOD_CANDIDATES[1]], tries=4))
+    out = first(res, "finish_research").output
+    assert "quote the same text" in out and "recommends memory headroom" in out, out
