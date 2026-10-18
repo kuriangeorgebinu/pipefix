@@ -236,3 +236,30 @@ def test_citing_the_call_that_read_a_page_maps_to_that_source(repo):
     tool_msgs = [m["content"] for m in llm.requests[-1]["messages"] if m["role"] == "tool"]
     assert any('"cite_as_source": 1' in t for t in tool_msgs)
     assert all(not t.startswith("[call #") for t in tool_msgs if "cite_as_source" in t)
+
+
+def test_quotes_must_be_about_the_setting_and_no_op_settings_are_dropped(repo):
+    turns = script()
+    i = next(k for k, t in enumerate(turns) if t[0][0] == "finish_research")
+    a = {"id": "A", "title": "unlabelled quotes, a no-op and a selector prefix", "process": "SORT_READS",
+         "settings": {"withName: 'SORT_READS' memory": "{ 15.GB * task.attempt }",          # prefix stripped
+                      "maxRetries": "2",
+                      "errorStrategy": "{ task.exitStatus in ((130..145) + 104) ? 'retry' : 'finish' }"},  # no-op
+         "rationale": "r", "evidence": [{"source": 1, "quote": Q_MEM},                       # unlabelled, about memory
+                                        {"source": 2, "quote": Q_MR},                        # unlabelled, about retries
+                                        {"source": 1, "quote": "a sentence that is not on the page at all"}]}
+    off = {"id": "C", "title": "memory backed only by an errorStrategy quote", "process": "SORT_READS",
+           "settings": {"memory": "{ 15.GB * task.attempt }"}, "rationale": "r",
+           "evidence": [{"setting": "memory", "source": 2, "quote": Q_ES}]}
+    turns[i] = [("finish_research", {"candidates": [a, GOOD_CANDIDATES[1], off]})]
+    turns[i + 1] = [("finish_decision", {"chosen": "A", "reasons": "A sizes memory to the 12 GB buffer the script "
+                                                                   "allocates, with headroom, and retries once more.",
+                                         "why_not": {"B": "changes the tool", "C": "failed the checks"}})]
+    res, _, _ = run_agent(repo, turns=turns)
+    assert res.done, res.error
+    ca, cc = res.candidates[0], res.candidates[2]
+    assert ca["valid"] and ca["settings"] == {"memory": "{ 15.GB * task.attempt }", "maxRetries": "2"}
+    assert any("errorStrategy dropped: same as now" in n for n in ca["notes"])
+    assert any("not used" in n for n in ca["notes"])
+    assert [e["setting"] for e in ca["evidence"]] == ["memory", "memory, maxRetries"]
+    assert not cc["valid"] and "memory has no verified quote about memory" in cc["problems"][0]

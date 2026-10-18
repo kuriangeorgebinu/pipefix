@@ -40,7 +40,7 @@ PHASES = ("debug", "research", "decide", "implement", "mr")
 PHASE_TITLE = {"debug": "1. Debug", "research": "2. Research solutions", "decide": "3. Pick the best solution",
                "implement": "4. Implement it", "mr": "5. Open the merge request"}
 BUDGET = {"debug": 24, "research": 16, "decide": 3, "implement": 4, "mr": 3}
-MAX_FINISH_TRIES = 3
+MAX_FINISH_TRIES = 4
 OUT_CHARS = 6000
 LOG_GROUPS = ("/aws/omics/WorkflowLog", "/aws/batch/job")
 S3_TASK_FILE = re.compile(r"(^|/)\.(command\.(run|sh|log|err|out|trace|begin)|exitcode)$")
@@ -205,7 +205,9 @@ HARD RULES (breaking one gets your call refused):
 - Base every claim on evidence: in step 1 quote the output of your own calls (by call #); in step 2 quote, word
   for word, pages you read with web_read_page. Never invent numbers, IDs, file names or quotes.
 - AWS access is read-only. Never ask for data files; S3 is only for Nextflow task files (.command.*, .exitcode).
-- Fix only the process that failed. Config values must use these forms: memory "{ N.GB * task.attempt }",
+- Fix only the process that failed. pipefix writes every candidate as a withName block for that process in
+  conf/pipefix.config, so candidates differ in their VALUES, not in where they are written. Put in "settings" only
+  the directives you CHANGE. Config values must use these forms: memory "{ N.GB * task.attempt }",
   time "{ N.h * task.attempt }", cpus "N", maxRetries "N", errorStrategy
   "{ task.exitStatus in <codes> ? 'retry' : 'finish' }" (codes: integers, a..b ranges, + and parentheses).
 - Size resources from what the task actually needs (read the process script and params for tool flags such as
@@ -223,7 +225,8 @@ PHASE_BRIEF = {
                 "candidates (e.g. raise memory vs lower the tool's buffer; with or without retry changes). Each "
                 "setting needs a verbatim quote from a page you read. Cite pages by their SOURCE number (the "
                 "'source' in web_search results, 'cite_as_source' in web_read_page), copy quotes exactly from the "
-                "'passages', and only cite pages you have read.",
+                "'passages', and only cite pages you have read. Label each quote with the setting it supports "
+                "(memory, cpus, time, errorStrategy, maxRetries); a quote only supports a setting it talks about.",
     "decide": "STEP 3, PICK THE BEST SOLUTION. No tools. Compare the candidates on correctness for THIS failure, cost, "
               "and risk, then call finish_decision.",
     "implement": "STEP 4, IMPLEMENT. Call implement_apply, check the diff it returns, then finish_implement.",
@@ -271,6 +274,13 @@ def _loose(text: str) -> str:
     """For checking debug evidence against JSON tool output: ignore JSON punctuation/escapes, case and spacing."""
     text = re.sub(r'\\[nrt"/\\]', " ", text or "")
     return " ".join(re.sub(r'[{}\[\]",:]', " ", _norm(text)).split())
+
+
+# what a quote must talk about to support a value for each setting
+SUBJECT = {"memory": r"memory|\bGB\b|GiB|RAM|out.of.memory|\bOOM\b", "cpus": r"\bcpus?\b|vCPU",
+           "time": r"\btime\b|hours?|wall|timeout", "maxRetries": r"maxRetries|retr(y|ies)|attempt",
+           "errorStrategy": r"errorStrategy|retr(y|ies)|exit (code|status)|exitStatus", "queue": r"\bqueues?\b",
+           "disk": r"\bdisk\b|storage"}
 
 
 class _Refused(Exception):
@@ -524,28 +534,49 @@ class Agent:
         by_n = {s["n"]: s for s in self.sources}
         for c in a.get("candidates") or []:
             cid = str(c.get("id", "")).strip() or f"C{len(cands) + 1}"
-            settings = {str(k): str(v).strip() for k, v in (c.get("settings") or {}).items()}
-            evid, cp = [], []
+            proc = str(c.get("process") or ctx["failed_tasks"][0]["process"]).split(":")[-1].strip()
+            cp, notes = [], []
+            # settings: strip selector prefixes, drop values identical to what is in effect now
+            tr = self.cfg.trace(proc) if self.cfg and proc in self.cfg.processes else None
+            settings = {}
+            for k, v in (c.get("settings") or {}).items():
+                m = re.search(r"(memory|time|cpus|errorStrategy|maxRetries|queue|disk)\s*$", str(k))
+                key, val = (m.group(1) if m else str(k).strip()), str(v).strip()
+                cur = tr.effective(key) if tr else None
+                if cur and _loose(cur.value) == _loose(val):
+                    notes.append(f"{key} dropped: same as now ({cur.where})")
+                    continue
+                settings[key] = val
+            # quotes: keep the verbatim ones, list the others (a bad quote alone doesn't sink the candidate)
+            evid = []
             for ev in c.get("evidence") or []:
                 n = ev.get("source")
                 n = int(n) if isinstance(n, (int, float)) or (isinstance(n, str) and str(n).isdigit()) else n
                 if not by_n.get(n, {}).get("read") and n in self.read_by_call:
                     n = self.read_by_call[n]     # the model cited the call that read the page: same page
                 src = by_n.get(n) if by_n.get(n, {}).get("read") else None
-                why = verify_quote(str(ev.get("quote", "")), src)
+                quote = " ".join(str(ev.get("quote", "")).split())
+                why = verify_quote(quote, src)
                 if why:
-                    cp.append(f"quote from source {n} {why}" + ("" if src or n in by_n else
-                              " (use the source number from web_search / cite_as_source, and read the page first)"))
-                else:
-                    evid.append({"setting": str(ev.get("setting", "")), "n": n,  # source number
-                                 "quote": redact(" ".join(str(ev["quote"]).split()))})
-            proc = str(c.get("process") or ctx["failed_tasks"][0]["process"]).split(":")[-1]
+                    notes.append(f"quote from source {n} not used: {why}")
+                    continue
+                label = str(ev.get("setting", "")).strip()
+                lm = re.search(r"(memory|time|cpus|errorStrategy|maxRetries|queue|disk)\s*$", label)
+                evid.append({"setting": lm.group(1) if lm else "", "n": n, "quote": redact(quote)})
+            # every changed setting needs a verified quote that is about that setting
             for k, v in settings.items():
                 why = check(proc, k, v, ctx)
                 if why:
                     cp.append(f"{k} = {v}: {why}")
-                elif not any(e["setting"] == k for e in evid):
-                    cp.append(f"{k} has no verified quote from a page you read")
+                    continue
+                topic = SUBJECT.get(k)
+                support = [e for e in evid if e["setting"] in ("", k) and (not topic or re.search(topic, e["quote"], re.I))]
+                if not support:
+                    cp.append(f"{k} has no verified quote about {k} from a page you read")
+                for e in support:
+                    e.setdefault("supports", []).append(k)
+            for e in evid:   # a quote may support several settings; show them all
+                e["setting"] = ", ".join(e.pop("supports", [])) or e["setting"]
             if not evid:
                 cp.append("no verified quote at all")
             if cp:
@@ -553,13 +584,14 @@ class Agent:
             cands.append({"id": cid, "title": redact(str(c.get("title", "")))[:160], "process": proc,
                           "settings": settings, "rationale": redact(str(c.get("rationale", "")))[:1500],
                           "pros": redact(str(c.get("pros", "")))[:400], "cons": redact(str(c.get("cons", "")))[:400],
-                          "evidence": evid, "valid": not cp, "problems": cp})
+                          "evidence": evid, "valid": not cp, "problems": cp, "notes": notes})
         if len(cands) < 2:
             problems.append("give at least 2 genuinely different candidates")
         if not any(c["valid"] for c in cands):
             problems.append("no candidate passed every check")
-        if problems and not (len(cands) >= 2 and any(c["valid"] for c in cands)):
-            raise _Refused(" | ".join(problems))
+        if len(cands) < 2 or not any(c["valid"] for c in cands):
+            extra = [f"candidate {c['id']} notes: " + "; ".join(c["notes"]) for c in cands if c["notes"]]
+            raise _Refused(" | ".join(problems + extra))
         self.res.candidates = cands
         bad = [c["id"] for c in cands if not c["valid"]]
         return "Research accepted." + (f" Candidates {bad} failed checks and cannot be chosen." if bad else "")
