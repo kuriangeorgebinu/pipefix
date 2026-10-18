@@ -1214,11 +1214,14 @@ class Agent:
                 problems.append(f"'{finding}' check of {cov} needs evidence that is about {cov} (a quote about an "
                                 "unrelated fact does not confirm or refute the number)")
                 continue
-            if finding in ("confirmed", "wrong") and re.search(INSTANCE, str(ch.get("claim", "")), re.I):
+            if finding in ("confirmed", "wrong") and cov in ("memory", "cpus") and \
+                    re.search(INSTANCE, str(ch.get("claim", "")), re.I):
                 gaps = self._instance_gaps([g for g in good if g.get("source")])
                 if gaps or not any(g.get("source") and re.search(INSTANCE, g["quote"], re.I) for g in good):
-                    problems.append(f"'{finding}' check of where the request lands needs instance-table rows from "
-                                    "every family on the page: " + ("; ".join(gaps) or "quote the rows"))
+                    problems.append(f"'{finding}' check of where the {cov} request lands needs rows of the instance "
+                                    "table quoted from the docs page you read ({source, quote}), at least one row per "
+                                    "instance family the page lists"
+                                    + (": " + "; ".join(gaps) if gaps else "; no row was quoted from a page"))
                     continue
             own = own or any(self._own(g, who) for g in good)
             checks.append({"covers": str(ch.get("covers", "other")).strip(), "claim": redact(str(ch.get("claim", "")))[:600],

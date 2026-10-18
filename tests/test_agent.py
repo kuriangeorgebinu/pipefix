@@ -704,7 +704,7 @@ def test_a_reviewer_landing_check_must_show_every_family(repo):
     turns.insert(k, [R("finish_review", {"verdict": "agree", "checks": [CHECK_ROOT, CHECK_MEM, land]})])
     res, _, _ = run_agent(repo, turns=turns, aws_doc=DOC_TWO_FAMILIES)
     st = next(s for s in res.steps if s.tool == "finish_review")
-    assert not st.ok and "rows from every family" in st.output, st.output
+    assert not st.ok and "at least one row per instance family" in st.output, st.output
 
 
 def test_headroom_and_reserve_are_separate_inputs(repo):
@@ -721,3 +721,13 @@ def test_headroom_and_reserve_are_separate_inputs(repo):
     res, _, _ = run_agent(repo, turns=with_research([same, GOOD_CANDIDATES[1]], tries=4))
     out = first(res, "finish_research").output
     assert "quote the same text" in out and "recommends memory headroom" in out, out
+
+
+def test_a_root_cause_check_that_names_the_instance_it_ran_on_is_not_a_landing_claim(repo):
+    turns = script()
+    k = turn_of(turns, "finish_review")
+    root = {**CHECK_ROOT, "claim": "the task ran on omics.c.large with 2 GB"}
+    turns[k] = [R("finish_review", {"verdict": "agree", "checks": [root, CHECK_MEM]})]
+    res, _, _ = run_agent(repo, turns=turns)
+    st = next(s for s in res.steps if s.tool == "finish_review")
+    assert st.ok, st.output
