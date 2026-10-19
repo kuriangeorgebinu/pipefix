@@ -959,7 +959,7 @@ let FIXMODE = store.get("pipefix-fixmode") || "rules";
 const FM_HINT = {
   rules: "pipefix's own rules diagnose and fix. Nothing is sent to an AI.",
   ai: "pipefix investigates; an LLM researches AWS, Nextflow and Terraform docs and proposes the fix, with verified quotes.",
-  agent: "The AI agent runs everything itself in 5 enforced steps: debug on AWS (read-only), research, pick the best solution, implement, merge request.",
+  agent: "Three AI agents debug on AWS (read-only), research the docs, pick a fix and check each other. You review the result, can challenge it, and approve the merge request.",
 };
 function setFixMode(m) {
   if (m !== "rules" && !aiReady()) m = "rules";

@@ -717,7 +717,9 @@ def test_headroom_and_reserve_are_separate_inputs(repo):
                    "derivations": {"memory": {"formula": "ceil(need_gib / (1 - reserve))", "inputs": {
                        k: v for k, v in DERIV_15["memory"]["inputs"].items() if k != "headroom"}}}}
     res, _, _ = run_agent(repo, turns=with_research([no_headroom, GOOD_CANDIDATES[1]], tries=4))
-    assert "recommends memory headroom" in first(res, "finish_research").output
+    out = first(res, "finish_research").output
+    assert "recommends memory headroom" in out
+    assert 'source 1: "Include at least 15% headroom in allocated memory to account for background processes."' in out, out
     same = {**GOOD_CANDIDATES[0], "settings": {"memory": "{ 14.GB * task.attempt }"},
             "derivations": {"memory": {"formula": "ceil(need_gib * (1 + h) / (1 - reserve))", "inputs": {
                 "need_gib": DERIV_15["memory"]["inputs"]["need_gib"],

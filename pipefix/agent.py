@@ -566,6 +566,17 @@ CITED = [  # how agents cite inline: {source: 1, quote: "..."} / "..." (source 1
 ]
 
 
+def _sentence(text: str, rx: re.Pattern, limit: int = 240) -> str:
+    """The sentence around the first match of rx (so a refusal can show what pipefix found)."""
+    t = re.sub(r"\s+", " ", text or "")
+    m = rx.search(t)
+    if not m:
+        return ""
+    start = max(t.rfind(". ", 0, m.start()) + 2, m.start() - limit, 0)
+    end = t.find(".", m.end())
+    return t[start:(end + 1 if 0 <= end < m.end() + limit else m.end())].strip()
+
+
 def _rows(page: str) -> dict[str, tuple[float, float]]:
     """Instance-table rows on a docs page: name -> (vCPUs, GiB)."""
     return {m.group(1).lower(): (float(m.group(2)), float(m.group(3))) for m in ROW.finditer(page or "")}
@@ -1183,9 +1194,11 @@ class Agent:
         quotes = [i.get("quote", "") for i in inputs.values()]
         out = []
         if read and not any(re.search(r"headroom", q, re.I) for q in quotes):
-            out.append(f"a page you read recommends memory headroom (source {read[0]['n']}); decide the headroom "
-                       "yourself, but put it in the formula as its own input quoted from evidence (it is not the "
-                       "platform reserve)")
+            found = "; ".join(f"source {s['n']}: \"{_sentence(s['text'], HEADROOM_DOC)}\"" for s in read[:3])
+            out.append(f"a page you read recommends memory headroom ({found}); decide the headroom yourself (at "
+                       "least what the docs recommend, more only if evidence from this run backs it), and put it "
+                       "in the formula as its own input quoted from that page ({source, quote}); it is not the "
+                       "platform reserve")
         seen = {}
         for name, i in inputs.items():
             q = _norm(i.get("quote", ""))
@@ -1649,7 +1662,8 @@ class Agent:
                 if name in ("finish_decision", "finish_response") and not str(args.get("reasons") or "").strip():
                     args["reasons"] = reason        # models often put the decision's reasons in the call 'reason'
                 self.n += 1
-                calls += 1
+                if not COMMANDS.get(name, {}).get("finish"):
+                    calls += 1          # correcting a refused finish does not use up the step's search budget
                 self.owner[self.n] = self.who
                 shown = {k: v for k, v in args.items() if k not in ("candidates", "evidence", "why_not",
                                                                     "derivations", "checks", "answers")}
