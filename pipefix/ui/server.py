@@ -34,6 +34,7 @@ TOKEN = secrets.token_urlsafe(24)
 JOBS: dict[str, dict] = {}
 LOCK = threading.Lock()
 STATUS: dict = {"aws": {"state": "checking"}}
+MAX_DISCUSSIONS = 3
 
 # ---------- turning results into JSON for the page ----------
 
@@ -204,11 +205,11 @@ def _run_agent(job: dict, req: dict, clients, repo: Path, goal: dict) -> None:
     import importlib
     from .. import agent as _agent_mod
     importlib.reload(_agent_mod)   # pick up agent changes without restarting the console (tokens stay in memory)
-    from ..agent import PHASE_TITLE, Agent, open_mr, to_json
+    from ..agent import PHASE_TITLE, Agent
+    job["repo"] = repo
     goal = {k: v for k, v in goal.items() if k != "since_hours"}
     has_repo = (repo / "nextflow.config").is_file()
-    token = any(vcs.token_status(p)["set"] for p in vcs.PROVIDERS)
-    allow_mr = bool(req.get("agent_mr")) and token and has_repo
+    # the agents never open the MR themselves here: a person reviews the change and approves it (open-mr)
 
     def step(st):
         for s in job["stages"]:
@@ -217,10 +218,19 @@ def _run_agent(job: dict, req: dict, clients, repo: Path, goal: dict) -> None:
         job["stages"].append({"name": f"{PHASE_TITLE[st.phase]} · #{st.n} {st.summary}",
                               "state": "done" if st.ok else "failed"})
     job["trace"] = []
-    agent = Agent(clients, repo if has_repo else None, goal, allow_mr=allow_mr, on_step=step,
-                  on_event=job["trace"].append, mr_opener=lambda res: open_mr(repo, res, draft=not req.get("ready")))
-    _stage(job, "Agents starting: 1. Debug, 2. Research, 3. Pick, 3b. Expert review, 4. Implement, 5. Merge request")
-    res = agent.run()
+    agent = Agent(clients, repo if has_repo else None, goal, allow_mr=False, on_step=step,
+                  on_event=job["trace"].append, require_approval=True)
+    job["agent"] = agent
+    _stage(job, "Agents starting: 1. Debug, 2. Research, 3. Pick, 3b. Expert review, 4. Implement; then you review "
+                "and approve the merge request")
+    agent.run()
+    _agent_result(job, agent)
+
+
+def _agent_result(job: dict, agent) -> None:
+    from ..agent import to_json
+    res, repo = agent.res, Path(job["repo"])
+    has_repo = bool(agent.repo)
     patch = res.patch
     if patch is not None:
         patch.agent = res
@@ -230,13 +240,25 @@ def _run_agent(job: dict, req: dict, clients, repo: Path, goal: dict) -> None:
     job["patch"], job["repo"] = (res.patch, repo) if res.patch is not None else (None, repo)
     job["result"] = serialize(res.inv, res.diagnoses, patch, repo, cfg)
     job["result"]["agent"] = to_json(res)
-    if res.mr_url:
-        job["mr"] = {"url": res.mr_url, "existing": False}
-        job["written"] = list(patch.files)
+    job["result"]["approval_needed"] = bool(to_json(res)["awaiting_approval"]) and not job.get("mr")
     for s in job["stages"]:
         if s["state"] == "running":
             s["state"] = "done"
     job["status"] = "stopped" if res.error else "done"   # stopped: e.g. the experts did not agree; nothing opened
+
+
+def _discuss(job: dict, message: str) -> None:
+    """A person disagrees with or asks about the agents' result: they verify, answer or revise, experts re-review."""
+    agent = job["agent"]
+    prev = job["status"]
+    try:
+        agent.discuss(message)
+        job.pop("written", None)          # a revised change has not been written anywhere yet
+        _agent_result(job, agent)
+    except Exception as e:  # noqa: BLE001
+        job["status"] = prev
+        job["discuss_error"] = redact(str(e))
+        traceback.print_exc()
 
 
 def _apply(job: dict) -> dict:
@@ -263,6 +285,9 @@ def _open_mr(job: dict, ready: bool) -> dict:
         raise ValueError("The files pipefix changes have uncommitted edits. Commit or stash them first.")
     written = job.get("written") or patch.apply(repo)
     text, title = job["result"]["description"], pr_title(patch)
+    if "agent" in job:
+        text += ("\n\n---\nA person reviewed this AI-generated change and its evidence in the pipefix console and "
+                 "approved opening this merge request.\n")
     branch, base = vcs.commit_branch(repo, written, title, text, h)
     try:
         url = vcs.open_request(repo, remote, branch, base, title, text, draft=not ready)
@@ -343,6 +368,7 @@ class Handler(BaseHTTPRequestHandler):
             since = int((parse_qs(u.query).get("since") or ["0"])[0] or 0)
             return self._json(200, {k: job[k] for k in ("id", "kind", "label", "status", "stages", "result", "error")}
                               | {"written": job.get("written"), "mr": job.get("mr"),
+                                 "discuss_error": job.get("discuss_error"),
                                  "trace": job["trace"][since:] if "trace" in job else None,
                                  "trace_len": len(job.get("trace") or [])})
         self._json(404, {"error": "Not found."})
@@ -380,13 +406,37 @@ class Handler(BaseHTTPRequestHandler):
                 job = _new_job(req.get("mode", ""), label)
                 threading.Thread(target=_run_investigation, args=(job, req), daemon=True).start()
                 return self._json(202, {"id": job["id"]})
+            if m := re.fullmatch(r"/api/jobs/(\w+)/discuss", u.path):
+                job = JOBS.get(m.group(1))
+                if not job or "agent" not in job:
+                    return self._json(404, {"error": "Only an AI agent run can be discussed."})
+                with LOCK:
+                    if job["status"] not in ("done", "stopped"):
+                        return self._json(409, {"error": "The agents are still working on this run."})
+                    if job.get("mr"):
+                        return self._json(409, {"error": "The merge request is open; discuss the change there."})
+                    msg = str(req.get("message") or "").strip()
+                    if not msg or len(msg) > 2000:
+                        return self._json(400, {"error": "Write your feedback (up to 2,000 characters)."})
+                    if len(job["agent"].res.discussion) >= MAX_DISCUSSIONS:
+                        return self._json(409, {"error": f"This run has had {MAX_DISCUSSIONS} discussions. Start a "
+                                                         "new investigation to go on."})
+                    job["status"], job["discuss_error"] = "discussing", None
+                threading.Thread(target=_discuss, args=(job, msg), daemon=True).start()
+                return self._json(202, {"ok": True})
             if m := re.fullmatch(r"/api/jobs/(\w+)/(apply|open-mr)", u.path):
                 job = JOBS.get(m.group(1))
                 if not job or job["status"] != "done":
                     return self._json(409, {"error": "That investigation isn't finished."})
+                if "agent" in job and not job["result"].get("approval_needed") and not job.get("mr"):
+                    return self._json(409, {"error": "The expert agents have not agreed on a change to approve."})
                 if m.group(2) == "apply":
                     return self._json(200, _apply(job))
+                if "agent" in job and not req.get("reviewed"):
+                    return self._json(400, {"error": "Confirm that you reviewed the change and its evidence first."})
                 job["mr"] = _open_mr(job, bool(req.get("ready")))
+                if "agent" in job:
+                    job["result"]["approval_needed"] = False
                 return self._json(200, job["mr"])
         except Exception as e:
             return self._json(400, {"error": redact(str(e))})

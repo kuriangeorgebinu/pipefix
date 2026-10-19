@@ -489,6 +489,36 @@ dialog .scopes { font-size: 13.5px; margin: 8px 0 0; padding-left: 18px; }
 .chip.bad { background: var(--T-wash); color: var(--T-ink); }
 .answer-foot { display: flex; flex-wrap: wrap; gap: 18px 28px; align-items: flex-start; margin-top: 18px; padding-top: 16px; border-top: 1px solid var(--rule); }
 .answer-foot .btn { text-decoration: none; }
+.disclaimer { display: flex; gap: 8px; align-items: flex-start; margin: 14px 0 0; font-size: 13px; color: var(--ink-2); max-width: 80ch; }
+.disclaimer svg { flex: none; margin-top: 2px; color: var(--G-ink); }
+.approve-row { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+.approve-row .linkbtn { font-size: 14px; }
+.discuss { border: 1px solid var(--rule); border-radius: var(--r-panel); background: var(--surface); padding: 18px 22px; }
+.discuss h2 { margin-top: 0; }
+.thread { list-style: none; margin: 0 0 14px; padding: 0; display: grid; gap: 12px; }
+.msg { display: grid; grid-template-columns: 28px 1fr; gap: 10px; align-items: start; }
+.msg .bub { border-radius: 12px; padding: 10px 14px; font-size: 14px; background: var(--sunk); border: 1px solid var(--rule); }
+.msg.you .bub { background: var(--C-wash); border-color: transparent; }
+.msg .bub p { margin: 0; white-space: pre-wrap; }
+.msg .bub .who-l { display: block; font-size: 12px; font-weight: 600; color: var(--ink-3); margin-bottom: 2px; }
+.outcome { display: inline-block; margin-top: 8px; font-size: 12.5px; font-weight: 600; padding: 2px 10px; border-radius: 999px; }
+.outcome.stands { background: var(--A-wash); color: var(--A-ink); } .outcome.revised { background: var(--G-wash); color: var(--G-ink); }
+.outcome.no_config, .outcome.no_agreement, .outcome.error { background: var(--T-wash); color: var(--T-ink); }
+.msg .ev-q { margin: 6px 0 0; font-size: 12.5px; color: var(--ink-2); }
+.working { display: flex; gap: 8px; align-items: center; font-size: 13.5px; color: var(--ink-2); }
+.working .dots i { display: inline-block; width: 5px; height: 5px; margin-right: 3px; border-radius: 50%; background: var(--ink-3); animation: blink 1.2s infinite; }
+.working .dots i:nth-child(2) { animation-delay: .2s; } .working .dots i:nth-child(3) { animation-delay: .4s; }
+@keyframes blink { 0%, 80%, 100% { opacity: .25; } 40% { opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { .working .dots i { animation: none; } }
+.disc-form label { display: block; font-weight: 600; font-size: 14px; margin-bottom: 4px; }
+.disc-form small { display: block; color: var(--ink-3); font-size: 12.5px; margin-bottom: 8px; }
+.disc-form textarea { width: 100%; min-height: 84px; resize: vertical; font: inherit; font-size: 14px; padding: 10px 12px; border-radius: var(--r-ctl); border: 1px solid var(--rule-2); background: var(--surface); color: var(--ink); box-sizing: border-box; }
+.disc-form .row { display: flex; gap: 10px; align-items: center; margin-top: 8px; flex-wrap: wrap; }
+.disc-form .count { font-size: 12.5px; color: var(--ink-3); }
+.who.user { color: var(--C); }
+.av.user { background: var(--C-wash); color: var(--C); box-shadow: inset 0 0 0 1px var(--C); }
+.lg.user .lg-body p { white-space: pre-wrap; }
+#mr-dialog .reviewed { display: flex; gap: 8px; align-items: flex-start; margin: 10px 0; font-weight: 600; }
 .next ol { margin: 0; padding-left: 20px; font-size: 14px; color: var(--ink); }
 .next li + li { margin-top: 2px; }
 .evsrc { display: inline-block; font-family: var(--mono); font-size: 11.5px; color: var(--ink-3); margin-right: 8px; white-space: nowrap; }
@@ -659,8 +689,7 @@ details.agentlog > summary .sum-d { font-size: 13px; color: var(--ink-3); }
           </div>
           <small id="fixmode-hint"></small>
         </div>
-        <label class="check" id="f-agent-mr" hidden><input type="checkbox" id="agent-mr" checked><span>Let the agent open the merge request</span>
-          <small>Step 5 opens a draft MR on the repo's origin. Needs a GitHub or GitLab token.</small></label>
+        <p class="note" id="f-agent-mr" hidden>When both expert agents agree, you review the change and approve it; only then does pipefix open the merge request. You can also challenge the fix and the agents will check your point.</p>
         <input type="checkbox" id="ai" hidden>
         <p class="note" id="demo-note" hidden>Runs against a built-in example account with four failed tasks and an nf-core style pipeline. Nothing touches AWS or your files.</p>
         <button class="btn primary run-btn" id="run" type="submit">Investigate</button>
@@ -691,6 +720,7 @@ details.agentlog > summary .sum-d { font-size: 13px; color: var(--ink-3); }
   <h2 id="mr-h">Open a merge request</h2>
   <p>pipefix will:</p>
   <ul id="mr-steps"></ul>
+  <label class="reviewed" id="mr-reviewed-l" hidden><input type="checkbox" id="mr-reviewed"> <span>I reviewed the cause, the change and the evidence. This AI-generated fix can be wrong; I take responsibility for proposing it.</span></label>
   <label><input type="checkbox" id="mr-ready"> Open it ready for review instead of as a draft</label>
   <div class="row">
     <button class="btn" type="button" id="mr-cancel">Cancel</button>
@@ -976,7 +1006,7 @@ $("#form").addEventListener("submit", async e => {
   const req = { mode: MODE, value: $("#value").value, since: $("#since").value, repo: $("#repo").value,
                 profile: $("#profile").value, region: $("#region").value,
                 nf_profiles: $("#nfp").value.split(/[\s,]+/).filter(Boolean), ai: FIXMODE === "ai",
-                fix_mode: FIXMODE, agent_mr: FIXMODE === "agent" && $("#agent-mr").checked };
+                fix_mode: FIXMODE };
   if (MODE !== "demo" && !req.value.trim()) { $("#value").focus(); $("#value").setCustomValidity("Enter a value first."); $("#value").reportValidity(); return; }
   $("#value").setCustomValidity("");
   $("#run").disabled = true;
@@ -995,7 +1025,7 @@ async function refreshHistory() {
   ul.innerHTML = jobs.map(j => {
     const bars = j.failures == null ? "" : Array.from({ length: Math.min(j.failures, 8) }, (_, i) => `<i class="${i < j.fixed ? "fx" : "nd"}"></i>`).join("");
     const when = new Date(j.created).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-    const sub = j.status === "running" ? "Running" : j.status === "failed" ? "Couldn't finish" : j.status === "stopped" ? "Stopped, no change made" :
+    const sub = j.status === "running" ? "Running" : j.status === "discussing" ? "Agents checking your feedback" : j.status === "failed" ? "Couldn't finish" : j.status === "stopped" ? "Stopped, no change made" :
       `${j.failures} failed, ${j.fixed} fixable`;
     return `<li><button type="button" data-id="${j.id}" aria-current="${j.id === CURRENT}"><span>${esc(j.label)}</span><span class="tally" aria-hidden="true">${bars}</span><span class="when">${when}, ${sub}</span></button></li>`;
   }).join("");
@@ -1038,8 +1068,8 @@ function toolKind(t) {
     t === "inspect_call" ? ["repo", "INSPECT"] : t.startsWith("web_") ? ["web", "WEB"] : t.startsWith("repo_") ? ["repo", "REPO"] :
     t.startsWith("finish_") ? ["finish", "CHECKPOINT"] : ["repo", "STEP"];
 }
-const WHO = { primary: "Primary", aws_expert: "AWS expert", nextflow_expert: "Nextflow expert" };
-const WHO_SHORT = { primary: "P", aws_expert: "AWS", nextflow_expert: "NF" };
+const WHO = { primary: "Primary", aws_expert: "AWS expert", nextflow_expert: "Nextflow expert", user: "You" };
+const WHO_SHORT = { primary: "P", aws_expert: "AWS", nextflow_expert: "NF", user: "You" };
 const WHO_ROLE = { primary: "investigates and proposes the fix", aws_expert: "fact-checks the AWS side", nextflow_expert: "fact-checks the Nextflow side" };
 const who = a => `<span class="who ${esc(a || "primary")}">${esc(WHO[a] || a || "Primary")}</span>`;
 const avatar = a => `<span class="av ${esc(a || "primary")}" aria-hidden="true">${esc(WHO_SHORT[a] || "?")}</span>`;
@@ -1049,6 +1079,8 @@ function argText(tool, a) {
   return Object.entries(a).map(([k, v]) => `${k}=${typeof v === "object" ? JSON.stringify(v) : v}`).join("  ");
 }
 function handoffWhy(from, to, verdict) {
+  if (from === "user") return "your feedback goes to the primary agent to check";
+  if (to === "user") return "waits for you";
   if (from === "primary") return "hands over the proposal for review";
   if (to === "primary") return verdict === "object" ? "sends back objections to answer" : "returns its verdict";
   return "the next expert reviews it independently";
@@ -1073,7 +1105,7 @@ function logHTML(events) {
     if (e.kind === "round") { out.push(`<li class="lg-round">${esc(e.text)}</li>`); continue; }
     if (e.kind === "result" || e.kind === "vote") continue;
     const ag = e.agent || "primary";
-    if (["thought", "call", "review"].includes(e.kind) && ag !== cur) {
+    if (["thought", "call", "review", "user"].includes(e.kind) && ag !== cur) {
       if (cur) out.push(`<li class="handoff"><span class="ho">${avatar(cur)}<span>${esc(WHO[cur])}</span><span class="arrow" aria-hidden="true">→</span><span class="sr"> hands off to </span>${avatar(ag)}<span>${esc(WHO[ag])}</span></span><span class="ho-why">${esc(handoffWhy(cur, ag, verdict[cur]))}</span></li>`);
       cur = ag;
     }
@@ -1081,7 +1113,11 @@ function logHTML(events) {
     const first = e.kind === "review" || out.length === 0 || !out[out.length - 1].includes(`data-ag="${ag}"`);
     const head = first ? `<div class="lg-who">${avatar(ag)}<span class="lg-name">${esc(WHO[ag] || ag)}</span></div>`
                        : `<div class="lg-who cont">${avatar(ag)}<span class="sr">${esc(WHO[ag] || ag)}</span></div>`;
-    if (e.kind === "thought") {
+    if (e.kind === "user") {
+      out.push(`<li class="lg user" data-ag="user">${head}<div class="lg-body"><span class="lg-k">Your feedback</span><p>${esc(e.text)}</p></div></li>`);
+    } else if (e.kind === "approval") {
+      out.push(`<li class="lg-note ok">${esc(e.text)}</li>`);
+    } else if (e.kind === "thought") {
       out.push(`<li class="lg thought" data-ag="${esc(ag)}">${head}<div class="lg-body"><span class="lg-k">Thinking</span><p>${esc(e.text)}</p></div></li>`);
     } else if (e.kind === "call") {
       const r = results[e.n], [k, label] = toolKind(e.tool), state = !r ? "pending" : r.ok ? "" : "no";
@@ -1149,18 +1185,32 @@ async function poll(id) {
     if (job.trace) showAgentProgress(job); else showProgress(job);
     setTimeout(() => poll(id), 500); return;
   }
+  if (job.status === "discussing") {
+    if (TRACE.id !== id) { TRACE.id = id; TRACE.events = []; }
+    TRACE.events.push(...(job.trace || []));
+    if (JOB?.id !== id || JOB.status !== "discussing") {
+      render(job, { quiet: true });
+      $("#discuss")?.scrollIntoView({ block: "start" });
+    }
+    showDiscussProgress();
+    setTimeout(() => poll(id), 1000); return;
+  }
+  if (TRACE.id === id && JOB?.id === id && $("#discuss")) DISC_DONE = true;
   TRACE.id = null;
   refreshHistory();
   if (job.status === "failed") return showError("The investigation stopped", job.error);
   render(job);
+  if (DISC_DONE) { DISC_DONE = false; $("#discuss-h")?.scrollIntoView({ block: "start" }); $("#disc-last")?.focus({ preventScroll: true });
+    const d = (job.result.agent?.discussion || []).slice(-1)[0]; if (d) announce(`The agents answered: ${OUTCOME[d.outcome] || ""}`); }
 }
+let DISC_DONE = false;
 
 /* ---------- the result ---------- */
 let SEL = 0, TAB = "evidence", JOB = null;
 const CLS_COLOR = { out_of_memory: "T", spot_interruption: "C", timeout: "G", disk_full: "G", container_error: "T",
                     reference_error: "G", permission_denied: "T", capacity: "G", unknown: "ink-3" };
 
-function render(job) {
+function render(job, opt = {}) {
   JOB = job; const r = job.result; SEL = Math.min(SEL, Math.max(0, r.failures.length - 1));
   const n = r.failures.length, fixed = r.failures.filter(f => f.fixed).length, you = n - fixed;
   const plat = { "aws-batch": "AWS Batch", healthomics: "AWS HealthOmics", files: "Nextflow files" }[r.platform] || r.platform;
@@ -1175,6 +1225,7 @@ function render(job) {
       <h1 id="result-h" tabindex="-1">${esc(headline)}</h1>
     </header>
     ${answerCard(r, job)}
+    ${discussHTML(r, job)}
     ${n ? `<section class="section" aria-labelledby="lanes-h"><h2 id="lanes-h" class="sr">Failed tasks</h2>${legendHTML(r)}
       <div class="lanes fresh" id="lanes">${r.failures.map(lane).join("")}</div></section>` : ""}
     ${n ? `<section class="section" id="detail"></section>` : ""}
@@ -1192,7 +1243,9 @@ function render(job) {
     setTimeout(() => $("#lanes")?.classList.remove("fresh"), 1200);
   }
   wireActions(job);
+  wireDiscuss(job);
   wireLog();
+  if (opt.quiet) return;
   announce(`Results ready. ${headline}`);
   window.scrollTo(0, 0);
   $("#result-h").focus({ preventScroll: true });
@@ -1239,7 +1292,8 @@ function answerCard(r, job) {
   const mr = job.mr?.url || a?.mr_url;
   const steps = [];
   if (mr) steps.push("Review and merge the merge request.");
-  else if (r.diff) steps.push(`Review the change below, then open a merge request.`);
+  else if (r.approval_needed) steps.push("Check the cause, the change and how we know. If you disagree, tell the agents below; if it holds, approve it.");
+  else if (r.diff && !a) steps.push(`Review the change below, then open a merge request.`);
   if (r.findings.some(f => WF_STEP.test(f.title))) steps.push("After merging, publish a new HealthOmics workflow version.");
   if (r.diff) steps.push("Rerun the pipeline.");
   r.failures.filter(f => !f.fixed).forEach(f => steps.push(`${esc(f.name)}: ${ticks(firstSentence(f.recommendation, 180))}`));
@@ -1249,14 +1303,72 @@ function answerCard(r, job) {
     ${changes.length ? `<ul class="changes" aria-label="Setting changes">${changes.join("")}</ul>${fixedF.some(f => Object.values(f.fix.settings).some(v => /task\.attempt/.test(v))) ? `<p class="foot">Grows with each retry (× task.attempt).</p>` : ""}` : `<p class="nofix">No config change ${stopped(r) ? "was made" : "can fix this"}.</p>`}
     ${chips ? `<div class="chips">${chips}</div>` : ""}
     ${a?.error ? `<p class="result-msg err">${esc(firstSentence(a.error, 260))}</p>` : ""}
+    ${a ? `<p class="disclaimer"><svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true"><path fill="currentColor" d="M8 1.5 15 14H1L8 1.5Zm0 4a.75.75 0 0 0-.75.75v3.5a.75.75 0 0 0 1.5 0v-3.5A.75.75 0 0 0 8 5.5Zm0 6.25a.9.9 0 1 0 0 1.8.9.9 0 0 0 0-1.8Z"/></svg><span><b>AI-generated, and AI can be wrong.</b> pipefix re-checked every quote and number, and two expert agents reviewed it, but a person should review it before it is merged.</span></p>` : ""}
     <div class="answer-foot">
       ${mr ? `<a class="btn go" href="${esc(mr)}" target="_blank" rel="noopener">View merge request<span class="sr"> (opens in a new tab)</span></a>`
+           : r.approval_needed ? `<div class="approve-row"><button class="btn go" type="button" id="act-approve">Approve and open merge request</button><a class="btn" href="#discuss-h">I disagree</a></div>`
+           : a && (a.discussion || []).length < a.max_discussions && a.candidates?.length ? `<a class="btn" href="#discuss-h">Discuss with the agents</a>`
            : r.diff ? `<a class="btn" href="#chg-h">See the change</a>` : ""}
       ${steps.length ? `<div class="next"><b>Next</b><ol>${steps.map(s => `<li>${s}</li>`).join("")}</ol></div>` : ""}
     </div>
   </section>`;
 }
 function stopped(r) { return !!r.agent?.error; }
+
+const OUTCOME = { stands: "The fix stands", revised: "The fix was changed", no_config: "No config change can fix this",
+                  no_agreement: "The experts did not agree; nothing can be approved", error: "The discussion stopped", working: "Checking" };
+function discussHTML(r, job) {
+  const a = r.agent;
+  if (!a || !a.candidates?.length) return "";
+  const ds = a.discussion || [], busy = job.status === "discussing", left = a.max_discussions - ds.length;
+  const evq = e => e.call != null ? `call #${e.call}` : `source ${e.source}`;
+  const thread = ds.map((d, i) => `
+    <li class="msg you"><span class="av user" aria-hidden="true">You</span><div class="bub"><span class="who-l">You</span><p>${esc(d.message)}</p></div></li>
+    ${d.outcome === "working" ? "" : `<li class="msg"><span class="av primary" aria-hidden="true">P</span><div class="bub" ${i === ds.length - 1 ? 'id="disc-last" tabindex="-1"' : ""}>
+      <span class="who-l">Agents (primary, then both experts re-checked)</span>
+      ${d.reply ? `<p>${esc(d.reply)}</p>` : d.error ? `<p>${esc(d.error)}</p>` : ""}
+      ${(d.evidence || []).length ? `<p class="ev-q">${d.evidence.slice(0, 2).map(e => `${evq(e)}: “${esc(e.quote.slice(0, 160))}”`).join(" · ")}</p>` : ""}
+      <span class="outcome ${esc(d.outcome)}">${esc(OUTCOME[d.outcome] || d.outcome)}${d.outcome === "revised" ? `: ${Object.entries(d.after?.settings || {}).map(([k, v]) => `${esc(k)} ${esc(pretty(k, v))}`).join(", ")}` : ""}</span>
+    </div></li>`}`).join("");
+  return `<section class="section discuss" id="discuss" aria-labelledby="discuss-h">
+    <h2 id="discuss-h">Disagree, or have a question?</h2>
+    ${ds.length ? `<ol class="thread" aria-label="Your discussion with the agents">${thread}</ol>` : ""}
+    <div id="disc-live" aria-live="polite">${busy ? `<div class="working"><span class="dots" aria-hidden="true"><i></i><i></i><i></i></span><span id="disc-status">The agents are checking your point</span></div>` : ""}</div>
+    ${job.mr ? `<p class="note">The merge request is open; discuss the change there.</p>`
+      : busy ? "" : left > 0 ? `<form class="disc-form" id="disc-form">
+      <label for="disc-msg">Tell the agents what you think is wrong</label>
+      <small>They treat it as a claim to check, not as fact: the primary agent verifies it against the run and the docs, then both experts review again. The fix changes only if the evidence supports you.</small>
+      <textarea id="disc-msg" maxlength="2000" required placeholder="For example: the task also failed on its second attempt with 16 GB, so this is not enough."></textarea>
+      <div class="row"><button class="btn primary" type="submit" id="disc-send">Send to the agents</button><span class="count">${left} of ${a.max_discussions} left for this run</span></div>
+      <div id="disc-err"></div></form>`
+      : `<p class="note">This run has had ${a.max_discussions} discussions. Start a new investigation to go on.</p>`}
+  </section>`;
+}
+function showDiscussProgress() {
+  const st = $("#disc-status"); if (!st) return;
+  const ev = [...TRACE.events].reverse().find(e => ["call", "review", "round", "thought"].includes(e.kind));
+  if (!ev) return;
+  const name = WHO[ev.agent] || "Primary";
+  st.textContent = ev.kind === "round" ? ev.text : ev.kind === "review" ? `${name} ${ev.verdict === "agree" ? "agreed" : "objected"}`
+    : ev.kind === "call" ? `${name}: ${callLabel(ev)}` : `${name} is thinking`;
+}
+function wireDiscuss(job) {
+  const f = $("#disc-form"); if (!f) return;
+  f.addEventListener("submit", async e => {
+    e.preventDefault();
+    const msg = $("#disc-msg").value.trim();
+    if (!msg) { $("#disc-msg").focus(); return; }
+    $("#disc-send").disabled = true;
+    try {
+      await api(`/api/jobs/${job.id}/discuss`, { message: msg });
+      announce("Sent. The agents are checking your point.");
+      poll(job.id);
+    } catch (err) {
+      $("#disc-send").disabled = false;
+      $("#disc-err").innerHTML = `<div class="result-msg err">${esc(err.message)}</div>`;
+    }
+  });
+}
 
 function legendHTML(r) {
   const has = k => r.failures.some(f => f[k] != null && (f.cls === "out_of_memory" || f.cls === "timeout"));
@@ -1333,7 +1445,7 @@ function auditBlock(r) {
     ${a?.trace?.length ? `<details class="agentlog" id="agentlog"><summary><span class="sum-t">Agent log</span>
         <span class="sum-d">${Object.entries(counts).map(([k, v]) => `${esc(WHO[k] || k)} ${v}`).join(" · ")} calls${a.usage ? ` · ${Math.max(1, Math.round((a.elapsed || 0) / 60))} min · ${((a.usage.prompt + a.usage.completion) / 1000).toFixed(0)}k tokens` : ""}${a.refused ? ` · ${a.refused} refused` : ""}</span></summary>
       <div class="log-tools" role="group" aria-label="Show steps by">
-        ${[["all", "All agents"], ["primary", "Primary"], ["aws_expert", "AWS expert"], ["nextflow_expert", "Nextflow expert"]].map(([k, t], i) => `<button type="button" class="fbtn" data-f="${k}" aria-pressed="${i === 0}">${t}</button>`).join("")}
+        ${[["all", "All agents"], ["primary", "Primary"], ["aws_expert", "AWS expert"], ["nextflow_expert", "Nextflow expert"], ...(a.trace.some(e => e.kind === "user") ? [["user", "You"]] : [])].map(([k, t], i) => `<button type="button" class="fbtn" data-f="${k}" aria-pressed="${i === 0}">${t}</button>`).join("")}
         ${a.trace.some(e => e.kind === "thought") ? `<label class="tgl"><input type="checkbox" id="log-thoughts" checked> Show thinking</label>` : ""}
       </div>
       <nav class="log-jump" aria-label="Jump to a step">${[...new Map(a.trace.filter(e => e.kind === "phase").map(e => [e.phase, e.text])).entries()].map(([p, t]) => `<a href="#lgp-${esc(p)}">${esc(t)}</a>`).join("")}</nav>
@@ -1507,7 +1619,7 @@ function changeBlock(r, job) {
     <div class="change"><div>${fileHTML}</div>
       <div class="actions">
         <button class="btn" type="button" id="act-write" ${job.written ? "disabled" : ""}>${job.written ? "Changes written" : "Write changes"}</button>
-        ${job.mr ? `<a class="btn go" href="${esc(job.mr.url)}" target="_blank" rel="noopener">View merge request<span class="sr"> (opens in a new tab)</span></a>` : `<button class="btn go" type="button" id="act-mr">Open merge request</button>`}
+        ${job.mr ? `<a class="btn go" href="${esc(job.mr.url)}" target="_blank" rel="noopener">View merge request<span class="sr"> (opens in a new tab)</span></a>` : r.agent ? (r.approval_needed ? `<button class="btn go" type="button" id="act-mr">Approve and open merge request</button>` : `<button class="btn go" type="button" disabled>Approve and open merge request</button>`) : `<button class="btn go" type="button" id="act-mr">Open merge request</button>`}
         <button class="btn" type="button" id="act-copy">Copy description</button>
         <p>${job.kind === "demo" ? "The demo writes to a temporary copy of the example pipeline, which has no remote, so it can't open a merge request." :
           tok ? `Writes to <span class="mono">${esc(r.repo)}</span>. Merge requests go to the repo's origin remote.` :
@@ -1545,25 +1657,33 @@ function wireActions(job) {
           msg(`<div class="result-msg ok">Wrote ${r.written.map(w => `<code>${esc(w)}</code>`).join(", ")} in <span class="mono">${esc(r.repo)}</span>.</div>`); }
     catch (err) { e.target.disabled = false; msg(`<div class="result-msg err">${esc(err.message)}</div>`); }
   });
-  $("#act-mr")?.addEventListener("click", () => {
+  const openDlg = () => {
     $("#mr-steps").innerHTML = [`create a branch <code>pipefix/fix-…</code> in <span class="mono">${esc(job.result.repo)}</span>`,
       `commit ${job.result.files.map(f => `<code>${esc(f)}</code>`).join(" and ")}`, "push it to the origin remote",
       "open the merge request with the evidence, the config trace and the platform findings"].map(s => `<li>${s}</li>`).join("");
+    const agentRun = !!job.result.agent;
+    $("#mr-reviewed-l").hidden = !agentRun; $("#mr-reviewed").checked = false; $("#mr-go").disabled = agentRun;
+    $("#mr-h").textContent = agentRun ? "Approve and open a merge request" : "Open a merge request";
+    $("#mr-go").textContent = agentRun ? "Approve and open" : "Open merge request";
     $("#mr-dialog").showModal();
-  });
+  };
+  $("#act-mr")?.addEventListener("click", openDlg);
+  $("#act-approve")?.addEventListener("click", openDlg);
 }
+$("#mr-reviewed").addEventListener("change", e => { $("#mr-go").disabled = !e.target.checked; });
 $("#mr-cancel").addEventListener("click", () => $("#mr-dialog").close());
 $("#mr-go").addEventListener("click", async () => {
   const btn = $("#mr-go"); btn.disabled = true; btn.textContent = "Opening";
   try {
-    const r = await api(`/api/jobs/${JOB.id}/open-mr`, { ready: $("#mr-ready").checked });
+    const r = await api(`/api/jobs/${JOB.id}/open-mr`, { ready: $("#mr-ready").checked, reviewed: $("#mr-reviewed").checked });
     JOB.mr = r; $("#mr-dialog").close();
+    if (JOB.result.agent) { JOB.result.approval_needed = false; render(JOB); return; }
     $("#act-mr").outerHTML = `<a class="btn go" href="${esc(r.url)}" target="_blank" rel="noopener">View merge request<span class="sr"> (opens in a new tab)</span></a>`;
     $("#act-msg").innerHTML = `<div class="result-msg ok">${r.existing ? "An open merge request already proposes this change: " : "Opened "}<a href="${esc(r.url)}" target="_blank" rel="noopener">${esc(r.url)}</a></div>`;
   } catch (err) {
     $("#mr-dialog").close();
     $("#act-msg").innerHTML = `<div class="result-msg err">${esc(err.message)}</div>`;
-  } finally { btn.disabled = false; btn.textContent = "Open merge request"; }
+  } finally { btn.disabled = false; btn.textContent = JOB?.result?.agent ? "Approve and open" : "Open merge request"; }
 });
 
 showWelcome();

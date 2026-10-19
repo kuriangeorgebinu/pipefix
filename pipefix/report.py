@@ -59,7 +59,9 @@ def _agent_section(patch: Patch) -> list[str]:
     from .agent import AGENTS, PHASE_TITLE, PHASES
     aws = [s for s in res.steps if s.ok and s.tool == "aws_call"]
     rounds = res.review.get("rounds", [])
-    lines = ["## How the agents worked", "",
+    lines = ["> **AI-generated proposal.** AI agents can make mistakes. Every quote and number below was re-checked by "
+             "pipefix, and a person must review the change before merging it.", "",
+             "## How the agents worked", "",
              f"Three pipefix agents (`{_md(res.model)}`) worked on this. The primary agent chose and made its own "
              f"read-only AWS calls ({len(aws)} in total across agents, found from the AWS API reference), read the "
              "pipeline repo, researched the docs, compared candidate solutions and proposed one. Two independent "
@@ -106,10 +108,18 @@ def _agent_section(patch: Patch) -> list[str]:
                 lines.append(f"- Primary {r['response']['action']}d: "
                              + "; ".join(_md(a['answer'])[:200] for a in r["response"]["answers"][:4]))
         lines.append("")
+    for i, dd in enumerate(getattr(res, "discussion", []) or [], 1):
+        outcome = {"stands": "the agents checked it and kept the fix; both experts agreed",
+                   "revised": "the agents changed the fix; both experts agreed with the new one",
+                   "no_config": "the agents concluded no config change can fix this",
+                   "no_agreement": "the experts did not agree afterwards",
+                   "error": "the discussion stopped"}.get(dd.get("outcome"), dd.get("outcome", ""))
+        lines += [f"**Reviewer feedback {i}.** A person reviewing the result wrote: \"{_md(dd['message'])[:600]}\" "
+                  f"Outcome: {outcome}." + (f" Agents' answer: {_md(dd['reply'])[:800]}" if dd.get("reply") else ""), ""]
     if res.implement_summary:
         lines += [f"**4. Implementation.** {_md(res.implement_summary)}", ""]
     lines += ["<details><summary>Every step the agents took</summary>", ""]
-    for p in PHASES:
+    for p in PHASES + ("discuss",):
         steps = [s for s in res.steps if s.phase == p]
         if steps:
             lines.append(f"*{PHASE_TITLE[p]}*")
