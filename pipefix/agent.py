@@ -649,6 +649,7 @@ class Agent:
         self._review = self._response = None
         self._questions: list[str] = []
         self._seen: dict[tuple, int] = {}
+        self._failed: dict[tuple, int] = {}       # refused finish calls (same args -> same refusal)
         self._wrong: list[str] = []
         self._reopened = False
         platform = "healthomics" if goal.get("omics_run") else "aws-batch"
@@ -1227,8 +1228,11 @@ class Agent:
             raise _Refused("reasons are too thin; compare against the evidence")
         c = ids[chosen]
         rationale = str(a.get("rationale") or "").strip() or c["rationale"]
-        texts = [str(a.get("reasons", "")), str(a.get("risks", "")), *why_not.values(), c["title"], rationale]
-        problems = self._landing_problems(c, a.get("lands_on"), texts) + self._citation_problems(texts)
+        labelled = [("reasons", str(a.get("reasons", ""))), ("risks", str(a.get("risks", ""))),
+                    *((f"why_not.{k}", v) for k, v in why_not.items()), (f"candidate {chosen}'s title", c["title"]),
+                    (f"candidate {chosen}'s rationale (send a corrected 'rationale' to replace it)", rationale)]
+        texts = [t for _, t in labelled]
+        problems = self._landing_problems(c, a.get("lands_on"), labelled) + self._citation_problems(texts)
         problems += self._stale_landing(c, a.get("lands_on"), [c["title"], rationale])
         if problems:
             raise _Refused("; ".join(problems))
@@ -1248,7 +1252,7 @@ class Agent:
         cpu = first_number("cpus", c["settings"].get("cpus") or cur.get("cpus", {}).get("value", ""))
         return cpu, mem
 
-    def _landing_problems(self, c: dict, lands_on, texts: list[str]) -> list[str]:
+    def _landing_problems(self, c: dict, lands_on, texts: list) -> list[str]:
         """Where the request lands, checked against the instance table the agent itself read (not a built-in one):
         the named instance must fit and be the smallest fit, and no text may call a fitting instance too small."""
         if self.inv.platform != "healthomics" or not ({"memory", "cpus"} & set(c["settings"])):
@@ -1277,9 +1281,10 @@ class Agent:
                 out.append(f"{name} is not the smallest fit for {cpu:g} vCPU / {mem:g} GiB on source {src['n']}: "
                            f"{smaller} also hold it (smallest {best[0]:g} vCPU / {best[1]:g} GiB)")
         flagged = set()
-        for t in texts:
+        for item in texts:
+            where, t = item if isinstance(item, tuple) else ("the text", item)
             # judge each clause on its own: "c.large and m.large are too small, r.large is the smallest fit" is true
-            for sent in re.split(r"(?<=[.;,:])\s+(?![^()]*\))|\n|\s+(?:but|while|whereas|so|and so)\s+", t):
+            for sent in re.split(r"(?<=[.;,:])\s+(?![^()]*\))|\n|\s+[—–-]+\s+|\s+(?:but|while|whereas|so|and so)\s+", t):
                 if not TOO_SMALL.search(sent):
                     continue
                 for inst in set(re.findall(INSTANCE, sent, re.I)):
@@ -1288,7 +1293,8 @@ class Agent:
                         flagged.add(inst)
                         out.append(f"the text calls {inst} too small, but it holds {cpu:g} vCPU / {mem:g} GiB "
                                    f"({rows[inst][0]:g} vCPU / {rows[inst][1]:g} GiB on source {src['n']}); say what is "
-                                   "actually true (e.g. it has more vCPUs than needed)")
+                                   f"actually true (e.g. it has more vCPUs than needed). Found in {where}: "
+                                   f"\"{sent.strip()[:200]}\"")
         return out
 
     @staticmethod
@@ -1677,6 +1683,9 @@ class Agent:
                 try:
                     if len(reason) < 8:
                         raise _Refused("every call needs a 'reason': say why you are making it")
+                    if COMMANDS.get(name, {}).get("finish") and key in self._failed:
+                        raise _Refused(f"this is the same {name} that was refused at #{self._failed[key]}; it will be "
+                                       "refused again. Change exactly what that refusal names")
                     if not COMMANDS.get(name, {}).get("finish") and key in self._seen:
                         raise _Refused(f"you already made this exact call (#{self._seen[key]}); its output will not "
                                        "change. Use that output, or ask for something different")
@@ -1687,6 +1696,7 @@ class Agent:
                     self.res.refused += 1
                     if COMMANDS.get(name, {}).get("finish"):
                         finish_fails += 1
+                        self._failed.setdefault(key, self.n)
                 except AwsUnavailable:
                     raise
                 except Exception as e:  # a failed command is reported to the agent, not fatal

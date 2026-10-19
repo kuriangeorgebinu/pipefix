@@ -720,6 +720,8 @@ def test_headroom_and_reserve_are_separate_inputs(repo):
     out = first(res, "finish_research").output
     assert "recommends memory headroom" in out
     assert 'source 1: "Include at least 15% headroom in allocated memory to account for background processes."' in out, out
+    again = [s.output for s in res.steps if s.tool == "finish_research"][1]
+    assert "the same finish_research that was refused at #" in again
     same = {**GOOD_CANDIDATES[0], "settings": {"memory": "{ 14.GB * task.attempt }"},
             "derivations": {"memory": {"formula": "ceil(need_gib * (1 + h) / (1 - reserve))", "inputs": {
                 "need_gib": DERIV_15["memory"]["inputs"]["need_gib"],
@@ -770,7 +772,8 @@ def test_naming_the_smaller_instances_as_too_small_in_the_same_sentence_is_true(
     two = {**GOOD_CANDIDATES[0], "evidence": GOOD_CANDIDATES[0]["evidence"] + [
         {"source": 1, "quote": "omics.m.xlarge 4 16 GiB"}, {"source": 1, "quote": "omics.r.large 2 16 GiB"}]}
     ok = ("It lands on the smallest instance that holds 15 GiB and 2 vCPUs: omics.m.large (8 GiB) is too small, "
-          "omics.r.large (2 vCPUs, 16 GiB) is the smallest fit.")
+          "omics.r.large (2 vCPUs, 16 GiB) is the smallest fit. It is omics.r.large (2 vCPUs, 16 GiB) — omics.m.large "
+          "(2 vCPUs, 8 GiB) is too small.")
     turns = _decide(with_research([two, GOOD_CANDIDATES[1]]), reasons=DECISION_A["reasons"] + " omics.r.large is too "
                     "small for this, but it is cheap.")
     i = turn_of(turns, "finish_decision", 1)
@@ -778,6 +781,7 @@ def test_naming_the_smaller_instances_as_too_small_in_the_same_sentence_is_true(
     res, _, _ = run_agent(repo, turns=turns, aws_doc=DOC_TWO_FAMILIES)
     outs = [s.output for s in res.steps if s.tool == "finish_decision"]
     assert "calls omics.r.large too small" in outs[0] and outs[0].count("too small, but") == 1
+    assert 'Found in reasons: "omics.r.large is too small for this' in outs[0]
     assert outs[1].startswith("Decision accepted"), outs[1]
 
 
