@@ -1276,13 +1276,16 @@ class Agent:
             if smaller:
                 out.append(f"{name} is not the smallest fit for {cpu:g} vCPU / {mem:g} GiB on source {src['n']}: "
                            f"{smaller} also hold it (smallest {best[0]:g} vCPU / {best[1]:g} GiB)")
+        flagged = set()
         for t in texts:
-            for sent in re.split(r"(?<=[.;])\s+|\n", t):
+            # judge each clause on its own: "c.large and m.large are too small, r.large is the smallest fit" is true
+            for sent in re.split(r"(?<=[.;,:])\s+(?![^()]*\))|\n|\s+(?:but|while|whereas|so|and so)\s+", t):
                 if not TOO_SMALL.search(sent):
                     continue
                 for inst in set(re.findall(INSTANCE, sent, re.I)):
                     inst = inst.lower()
-                    if inst in fits:
+                    if inst in fits and inst not in flagged:
+                        flagged.add(inst)
                         out.append(f"the text calls {inst} too small, but it holds {cpu:g} vCPU / {mem:g} GiB "
                                    f"({rows[inst][0]:g} vCPU / {rows[inst][1]:g} GiB on source {src['n']}); say what is "
                                    "actually true (e.g. it has more vCPUs than needed)")

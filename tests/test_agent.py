@@ -765,6 +765,22 @@ def test_the_decision_must_say_where_it_lands_and_be_true_about_it(repo):
     assert res.decision["lands_on"]["instance"] == "omics.r.large"
 
 
+def test_naming_the_smaller_instances_as_too_small_in_the_same_sentence_is_true(repo):
+    # live run 6e9768e30d: refused 6 times for a correct sentence
+    two = {**GOOD_CANDIDATES[0], "evidence": GOOD_CANDIDATES[0]["evidence"] + [
+        {"source": 1, "quote": "omics.m.xlarge 4 16 GiB"}, {"source": 1, "quote": "omics.r.large 2 16 GiB"}]}
+    ok = ("It lands on the smallest instance that holds 15 GiB and 2 vCPUs: omics.m.large (8 GiB) is too small, "
+          "omics.r.large (2 vCPUs, 16 GiB) is the smallest fit.")
+    turns = _decide(with_research([two, GOOD_CANDIDATES[1]]), reasons=DECISION_A["reasons"] + " omics.r.large is too "
+                    "small for this, but it is cheap.")
+    i = turn_of(turns, "finish_decision", 1)
+    turns[i] = [(n, {**a, "reasons": DECISION_A["reasons"] + " " + ok}) for n, a in turns[i]]
+    res, _, _ = run_agent(repo, turns=turns, aws_doc=DOC_TWO_FAMILIES)
+    outs = [s.output for s in res.steps if s.tool == "finish_decision"]
+    assert "calls omics.r.large too small" in outs[0] and outs[0].count("too small, but") == 1
+    assert outs[1].startswith("Decision accepted"), outs[1]
+
+
 def test_a_reviewer_landing_claim_under_other_still_needs_every_family(repo):
     a = {**GOOD_CANDIDATES[0], "evidence": GOOD_CANDIDATES[0]["evidence"] + [
         {"source": 1, "quote": "omics.m.xlarge 4 16 GiB"}, {"source": 1, "quote": "omics.r.large 2 16 GiB"}]}
