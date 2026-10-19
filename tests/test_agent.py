@@ -6,14 +6,14 @@ import json
 
 import pytest
 
-from pipefix import keys
-from pipefix.agent import (COMMANDS, PHASES, Agent, _excerpt_in, _in_phase, _Refused, _shows, first_number, safe_eval,
+from strandline import keys
+from strandline.agent import (COMMANDS, PHASES, Agent, _excerpt_in, _in_phase, _Refused, _shows, first_number, safe_eval,
                            to_json)
-from pipefix.aws.session import Clients
-from pipefix.report import body, pr_title
+from strandline.aws.session import Clients
+from strandline.report import body, pr_title
 
 ACCT = "522921672742"
-BUCKET = f"pipefix-demo-data-{ACCT}-us-east-1"
+BUCKET = f"strandline-demo-data-{ACCT}-us-east-1"
 
 
 @pytest.fixture
@@ -32,7 +32,7 @@ def repo(tmp_path):
 
 @pytest.fixture(autouse=True)
 def ai_keys(monkeypatch):
-    for v in ("SERPER_API_KEY", "PIPEFIX_LLM_API_KEY", "DEEPSEEK_API_KEY", "OPENAI_API_KEY"):
+    for v in ("SERPER_API_KEY", "STRANDLINE_LLM_API_KEY", "DEEPSEEK_API_KEY", "OPENAI_API_KEY"):
         monkeypatch.delenv(v, raising=False)
     monkeypatch.setenv("SERPER_API_KEY", "serper-test-key-0001")
     monkeypatch.setenv("DEEPSEEK_API_KEY", "sk-test-llm-key-0002")
@@ -57,7 +57,7 @@ class FakeAws:
     def reply(self, service, op, kw):
         if (service, op) == ("omics", "get_run"):
             return {"id": kw["id"], "status": "FAILED", "failureReason": "RUN_TASK_FAILED", "workflowId": "1348298",
-                    "roleArn": f"arn:aws:iam::{ACCT}:role/pipefix-demo-omics-run", "outputUri": f"s3://{BUCKET}/runs/"}
+                    "roleArn": f"arn:aws:iam::{ACCT}:role/strandline-demo-omics-run", "outputUri": f"s3://{BUCKET}/runs/"}
         if (service, op) == ("omics", "list_run_tasks"):
             return {"items": [{"taskId": "6130366", "name": "DEMO_GENOMICS:SORT_READS (sample1)", "status": "FAILED",
                                "cpus": 2, "memory": 2}]}
@@ -288,7 +288,7 @@ def test_three_agents_run_the_steps_and_agree_on_a_derived_fix(repo):
     assert refused == [("aws_call", "GetObject"), ("aws_call", "GetSecretValue"), ("aws_call", "StartRun"),
                        ("finish_debug", None)]
     assert llm.searches[0] == "HealthOmics task out of memory site:docs.aws.amazon.com"
-    new = res.patch.files["conf/pipefix.config"][1]
+    new = res.patch.files["conf/strandline.config"][1]
     assert "{ 15.GB * task.attempt }" in new and "errorStrategy" not in new and "cpus" not in new
     assert "resourceLimits" not in new                                  # nothing the agents did not choose
     a = res.candidates[0]
@@ -306,7 +306,7 @@ def test_three_agents_run_the_steps_and_agree_on_a_derived_fix(repo):
     text = body(res.diagnoses, res.patch, res.inv)
     assert "## How the agents worked" in text and "Both experts agreed" in text
     assert "ceil(need_gib * (1 + headroom) / (1 - reserve))" in text
-    assert pr_title(res.patch).startswith("pipefix agent:")
+    assert pr_title(res.patch).startswith("strandline agent:")
     j = to_json(res)
     assert j["aws_calls"] == 4 and j["review"]["agreed"] and j["usage"]["requests"] == len(llm.requests)
 
@@ -455,7 +455,7 @@ def test_more_retries_are_allowed_when_the_observed_kill_is_retried(repo):
                       "evidence": [{"source": 2, "quote": Q_MR}]})
     res, _, _ = run_agent(repo, turns=turns, fake=FakeAws(exit_code=137))
     assert res.done, res.error
-    assert "maxRetries = 2" in res.patch.files["conf/pipefix.config"][1]
+    assert "maxRetries = 2" in res.patch.files["conf/strandline.config"][1]
 
 
 def test_a_candidate_whose_settings_are_all_no_ops_is_refused(repo):
@@ -542,7 +542,7 @@ def test_defending_needs_evidence_and_revising_is_rechecked(repo):
     outs = [s.output for s in res.steps if s.tool == "finish_response" and not s.ok]
     assert "answer each question as asked" in outs[0]
     assert "the formula gives 16, but the value says 99" in outs[1]
-    assert res.done and "{ 16.GB * task.attempt }" in res.patch.files["conf/pipefix.config"][1]
+    assert res.done and "{ 16.GB * task.attempt }" in res.patch.files["conf/strandline.config"][1]
     assert res.review["rounds"][0]["response"]["action"] == "revise"
     assert res.review["rounds"][1]["settings"] == {"memory": "{ 16.GB * task.attempt }"}
 
@@ -600,9 +600,9 @@ def test_stops_cleanly_when_a_step_cannot_finish(repo):
 
 
 def test_benchmark_cases_build_and_score(tmp_path):
-    from pipefix.agent import AgentResult
-    from pipefix.bench import CASES, _reply, make_repo, score
-    from pipefix.configtrace import load_repo
+    from strandline.agent import AgentResult
+    from strandline.bench import CASES, _reply, make_repo, score
+    from strandline.configtrace import load_repo
     assert len(CASES) == 10
     for c in CASES:
         repo = make_repo(c, tmp_path / c.id)
@@ -625,7 +625,7 @@ def test_benchmark_cases_build_and_score(tmp_path):
 
 
 def test_page_focus_finds_the_sentence_asked_for():
-    from pipefix.agent import _focus
+    from strandline.agent import _focus
     page = ("HealthOmics memory HealthOmics memory intro. " * 60 + "HealthOmics reserves a small amount of memory (5%) "
             "for management and logging agents. " + "Other text about instances. " * 60)
     assert "reserves a small amount of memory (5%)" in _focus(page, "reserves a small amount of memory 5%")

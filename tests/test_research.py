@@ -1,16 +1,16 @@
-"""AI-researched fixes: search -> sources -> LLM proposal -> pipefix's checks -> patch and MR with citations.
+"""AI-researched fixes: search -> sources -> LLM proposal -> Strandline's checks -> patch and MR with citations.
 Serper and the LLM are stubbed; nothing leaves the machine in these tests."""
 import json
 
 import pytest
 
-from pipefix import keys
-from pipefix.configtrace import load_repo
-from pipefix.investigation import Investigation
-from pipefix.models import Diagnosis, FailureClass, TaskFailure
-from pipefix.patch import build_patch
-from pipefix.report import body, pr_title
-from pipefix.research import Http, check, context, exit_codes, research
+from strandline import keys
+from strandline.configtrace import load_repo
+from strandline.investigation import Investigation
+from strandline.models import Diagnosis, FailureClass, TaskFailure
+from strandline.patch import build_patch
+from strandline.report import body, pr_title
+from strandline.research import Http, check, context, exit_codes, research
 
 GB = 1024**3
 
@@ -32,13 +32,13 @@ def repo(tmp_path):
 def failure():
     f = TaskFailure("DEMO_GENOMICS:SORT_READS", tag="sample1", exit_code=1, memory_bytes=2 * GB, source="healthomics",
                     error_lines=["Traceback (most recent call last):", "MemoryError",
-                                 "s3://pipefix-demo-data-522921672742-us-east-1/runs/x"])
+                                 "s3://strandline-demo-data-522921672742-us-east-1/runs/x"])
     return Diagnosis(f, FailureClass.OUT_OF_MEMORY, 0.88, ["log: MemoryError"], "Out of memory in SORT_READS.", "Raise memory")
 
 
 @pytest.fixture
 def ai_keys(monkeypatch):
-    for v in ("SERPER_API_KEY", "PIPEFIX_LLM_API_KEY", "DEEPSEEK_API_KEY", "OPENAI_API_KEY"):
+    for v in ("SERPER_API_KEY", "STRANDLINE_LLM_API_KEY", "DEEPSEEK_API_KEY", "OPENAI_API_KEY"):
         monkeypatch.delenv(v, raising=False)
     monkeypatch.setenv("SERPER_API_KEY", "serper-test-key-0001")
     monkeypatch.setenv("DEEPSEEK_API_KEY", "sk-test-llm-key-0002")
@@ -103,18 +103,18 @@ def test_ai_fix_is_researched_checked_cited_and_written(repo, failure, ai_keys):
     assert "522921672742" not in "".join(llm_payloads)                              # account id redacted
     assert "reserves a small amount of memory" in llm_payloads[1] and "menu" not in llm_payloads[1]  # read pages
     patch = build_patch([failure], repo, inv=inv, cfg=cfg, ai=res)
-    new = patch.files["conf/pipefix.config"][1]
+    new = patch.files["conf/strandline.config"][1]
     assert "memory        = { 16.GB * task.attempt }" in new and "+ 104 + 1)" in new
     assert "source [1] https://docs.aws.amazon.com/" in new                         # citations in the config
     assert patch.ai_used == ["SORT_READS"]
-    assert any(fd.title.startswith("pipefix's rules would have") for fd in patch.findings)
+    assert any(fd.title.startswith("Strandline's rules would have") for fd in patch.findings)
     text = body([failure], patch, inv)
     assert "## AI research" in text and "**Sources**" in text and "1. [Doc for" in text
     assert 'source [1] says: "The task container uses the number of vCPUs' in text          # quotes in the MR
     assert res.fixes[0].sources == [1, 2] and len(res.fixes[0].evidence) == 3
     assert res.infrastructure[0]["evidence"][0]["n"] == 1
     assert all("\n" not in e["quote"] for e in res.fixes[0].evidence)
-    assert pr_title(patch).startswith("pipefix (AI-researched)")
+    assert pr_title(patch).startswith("strandline (AI-researched)")
 
 
 @pytest.mark.parametrize("settings,why", [
@@ -135,7 +135,7 @@ def test_unsafe_ai_values_are_rejected_not_written(repo, failure, ai_keys, setti
     assert res.fixes == [] and len(res.rejected) == 1 and why in res.rejected[0]
     patch = build_patch([failure], repo, inv=inv, cfg=cfg, ai=res)
     assert patch.ai_used == [] and "execute" not in patch.diff() and "evil" not in patch.diff()
-    assert "Rejected by pipefix's checks" in body([failure], patch, inv)
+    assert "Rejected by Strandline's checks" in body([failure], patch, inv)
 
 
 def test_strict_grounding_rejects_values_without_a_verified_quote(repo, failure, ai_keys):
@@ -159,7 +159,7 @@ def test_strict_grounding_rejects_values_without_a_verified_quote(repo, failure,
 
 
 def test_quote_matching_ignores_case_whitespace_and_curly_quotes():
-    from pipefix.research import verify_quote
+    from strandline.research import verify_quote
     src = {"n": 3, "text": "HealthOmics reserves a small\namount of memory (5%) for management and logging agents."}
     assert verify_quote("healthomics reserves a small amount of memory (5%) for management", src) is None
     assert verify_quote("HealthOmics reserves", src) == "quote too short to support a claim"
@@ -179,7 +179,7 @@ def test_unreadable_sources_cannot_ground_a_fix(repo, failure, ai_keys):
 
 
 def test_without_keys_falls_back_to_rules(repo, failure, monkeypatch):
-    for v in ("SERPER_API_KEY", "PIPEFIX_LLM_API_KEY", "DEEPSEEK_API_KEY", "OPENAI_API_KEY"):
+    for v in ("SERPER_API_KEY", "STRANDLINE_LLM_API_KEY", "DEEPSEEK_API_KEY", "OPENAI_API_KEY"):
         monkeypatch.delenv(v, raising=False)
     monkeypatch.setattr(keys, "_FILE", {})
     res = research(None, [failure], load_repo(repo), http=FakeHttp(GOOD))
@@ -198,7 +198,7 @@ def test_split_entries_for_one_process_are_merged(repo, failure, ai_keys):
     cfg = load_repo(repo)
     res = research(None, [failure], cfg, http=FakeHttp(reply))
     assert len(res.fixes) == 1 and res.fixes[0].sources == [1, 2]
-    new = build_patch([failure], repo, cfg=cfg, ai=res).files["conf/pipefix.config"][1]
+    new = build_patch([failure], repo, cfg=cfg, ai=res).files["conf/strandline.config"][1]
     assert "15.GB" in new and "cpus" in new and "maxRetries" in new
 
 
@@ -212,8 +212,8 @@ def test_exit_codes_and_check():
 
 
 def test_env_file_keys_are_reused_and_redacted(tmp_path, monkeypatch):
-    from pipefix.report import redact
-    for v in ("SERPER_API_KEY", "PIPEFIX_LLM_API_KEY", "DEEPSEEK_API_KEY", "OPENAI_API_KEY", "DEEPSEEK_MODEL"):
+    from strandline.report import redact
+    for v in ("SERPER_API_KEY", "STRANDLINE_LLM_API_KEY", "DEEPSEEK_API_KEY", "OPENAI_API_KEY", "DEEPSEEK_MODEL"):
         monkeypatch.delenv(v, raising=False)
     monkeypatch.setattr(keys, "_FILE", {})
     crew = tmp_path / "glpal-review-crew"

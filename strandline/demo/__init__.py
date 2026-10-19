@@ -1,6 +1,6 @@
 """A self-contained demo: a fake AWS account with four failed tasks and an nf-core-style pipeline repo.
 
-Used by `pipefix ui` ("Try the demo") so the whole flow can be seen without AWS access:
+Used by `strandline ui` ("Try the demo") so the whole flow can be seen without AWS access:
   GATK4_HAPLOTYPECALLER  out of memory          -> config fix (memory, capped at the largest instance)
   STAR_ALIGN             Spot reclaimed twice    -> config fix (On-Demand queue, Batch Spot retries)
   MULTIQC                image tag not in ECR    -> needs a person (with the tags that do exist)
@@ -67,9 +67,9 @@ DEMO_JOBS = [GATK_JOB["jobId"], STAR_JOB["jobId"], MULTIQC_JOB["jobId"], SORT_JO
 
 def demo_repo() -> Path:
     """A fresh git copy of the demo pipeline in a temp folder (so 'Write changes' can be tried safely)."""
-    dst = Path(tempfile.mkdtemp(prefix="pipefix-demo-")) / "sarek-mini"
+    dst = Path(tempfile.mkdtemp(prefix="strandline-demo-")) / "sarek-mini"
     shutil.copytree(PIPELINE, dst)
     for args in (["init", "-q", "-b", "main"], ["add", "-A"],
-                 ["-c", "user.email=demo@pipefix", "-c", "user.name=pipefix demo", "commit", "-qm", "demo pipeline"]):
+                 ["-c", "user.email=demo@strandline", "-c", "user.name=strandline demo", "commit", "-qm", "demo pipeline"]):
         subprocess.run(["git", *args], cwd=dst, check=True, capture_output=True)
     return dst

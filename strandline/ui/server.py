@@ -1,9 +1,9 @@
-"""`pipefix ui`: a local web console for investigating failed runs and approving fixes.
+"""`strandline ui`: a local web console for investigating failed runs and approving fixes.
 
 Security model: binds to 127.0.0.1 only; refuses requests whose Host header is not localhost (DNS rebinding);
 every state-changing request must carry the per-session token embedded in the page (so other websites in the
 same browser cannot trigger an investigation, a write or a merge request). AWS access is read-only as everywhere
-in pipefix. GitHub/GitLab tokens and the AI research keys (Serper, LLM) come from the environment or are pasted into the console once: either way they
+in Strandline. GitHub/GitLab tokens and the AI research keys (Serper, LLM) come from the environment or are pasted into the console once: either way they
 stay in this process's memory, are never written to disk, and are never sent back to the page (only "set", who
 it belongs to and its last four characters).
 """
@@ -282,11 +282,11 @@ def _open_mr(job: dict, ready: bool) -> dict:
     if existing := vcs.find_existing(remote, h):
         return {"url": existing, "existing": True}
     if vcs.git(repo, "status", "--porcelain", "--", *patch.files.keys()) and not job.get("written"):
-        raise ValueError("The files pipefix changes have uncommitted edits. Commit or stash them first.")
+        raise ValueError("The files Strandline changes have uncommitted edits. Commit or stash them first.")
     written = job.get("written") or patch.apply(repo)
     text, title = job["result"]["description"], pr_title(patch)
     if "agent" in job:
-        text += ("\n\n---\nA person reviewed this AI-generated change and its evidence in the pipefix console and "
+        text += ("\n\n---\nA person reviewed this AI-generated change and its evidence in the Strandline console and "
                  "approved opening this merge request.\n")
     branch, base = vcs.commit_branch(repo, written, title, text, h)
     try:
@@ -312,7 +312,7 @@ def _check_aws() -> None:
 # ---------- HTTP ----------
 
 class Handler(BaseHTTPRequestHandler):
-    server_version = "pipefix"
+    server_version = "strandline"
 
     def log_message(self, *args):
         pass
@@ -336,10 +336,10 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_GET(self):
         if not self._host_ok():
-            return self._json(403, {"error": "pipefix only answers on localhost"})
+            return self._json(403, {"error": "Strandline only answers on localhost"})
         u = urlparse(self.path)
         if u.path in ("/", "/index.html"):
-            html = (STATIC / "index.html").read_text(encoding="utf-8").replace("__PIPEFIX_TOKEN__", TOKEN)
+            html = (STATIC / "index.html").read_text(encoding="utf-8").replace("__STRANDLINE_TOKEN__", TOKEN)
             return self._send(200, html.encode(), "text/html; charset=utf-8")
         if m := re.fullmatch(r"/fonts/([\w.-]+\.woff2)", u.path):
             f = STATIC / "fonts" / m.group(1)
@@ -381,8 +381,8 @@ class Handler(BaseHTTPRequestHandler):
             n = 0
         raw = self.rfile.read(n) if n else b""
         if not self._host_ok():
-            return self._json(403, {"error": "pipefix only answers on localhost"})
-        if not secrets.compare_digest(self.headers.get("X-Pipefix-Token", ""), TOKEN):
+            return self._json(403, {"error": "Strandline only answers on localhost"})
+        if not secrets.compare_digest(self.headers.get("X-Strandline-Token", ""), TOKEN):
             return self._json(403, {"error": "Missing or wrong session token. Reload the page."})
         try:
             req = json.loads(raw or b"{}")
@@ -447,7 +447,7 @@ def serve(port: int = 8787, open_browser: bool = True) -> None:
     threading.Thread(target=_check_aws, daemon=True).start()
     httpd = ThreadingHTTPServer(("127.0.0.1", port), Handler)
     url = f"http://127.0.0.1:{httpd.server_address[1]}/"
-    print(f"pipefix {__version__} console: {url}  (Ctrl+C to stop)")
+    print(f"strandline {__version__} console: {url}  (Ctrl+C to stop)")
     if open_browser:
         threading.Timer(0.6, lambda: webbrowser.open(url)).start()
     try:

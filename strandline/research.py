@@ -1,5 +1,5 @@
 """AI-researched fixes (opt-in): search AWS, Nextflow/nf-core and Terraform sources, then let an LLM propose
-the config change, and accept only what passes pipefix's own checks.
+the config change, and accept only what passes Strandline's own checks.
 
 How it stays safe and auditable:
   * What leaves the machine: process names, exit codes, the task's error lines, the failed process's script and
@@ -9,7 +9,7 @@ How it stays safe and auditable:
     (registry + GitHub). Every result page is fetched (allow-listed hosts only) and READ: the model gets the
     relevant passages of each page, not search snippets.
   * Strict grounding rule: every value the model proposes, and every piece of infrastructure advice, must be
-    backed by a verbatim quote from a page pipefix fetched. pipefix checks that the quote really is in that
+    backed by a verbatim quote from a page Strandline fetched. Strandline checks that the quote really is in that
     page's text; a value without a verified quote is rejected, however plausible. The quotes are shown in the
     console and the MR, so the argument for the fix is the sources' own words.
   * The model writes a structured proposal, never config text. Each value is checked against a strict grammar
@@ -83,7 +83,7 @@ class Http:
             return json.loads(r.read())
 
     def get_text(self, url: str, timeout: int = 15) -> str:
-        req = urllib.request.Request(url, headers={"User-Agent": "pipefix (+https://github.com/kuriangeorgebinu/pipefix)"})
+        req = urllib.request.Request(url, headers={"User-Agent": "strandline (+https://github.com/kuriangeorgebinu/strandline)"})
         with urllib.request.urlopen(req, timeout=timeout) as r:
             if "html" not in r.headers.get("Content-Type", "html") and "text" not in r.headers.get("Content-Type", ""):
                 return ""
@@ -126,9 +126,9 @@ def excerpt(text: str, limit: int = EXCERPT_CHARS) -> str:
 
 
 def verify_quote(quote: str, source: dict | None) -> str | None:
-    """None if the quote is verbatim in the page pipefix read, else why not."""
+    """None if the quote is verbatim in the page Strandline read, else why not."""
     if not source or not source.get("text"):
-        return "cites a page pipefix could not read"
+        return "cites a page Strandline could not read"
     q = _norm(quote or "")
     if len(q) < QUOTE_MIN:
         return "quote too short to support a claim"
@@ -205,7 +205,7 @@ You have READ the numbered sources: each has the relevant passages of the page u
 
 STRICT RULE: your argument must be built on the sources. For EVERY setting you propose, and every piece of
 infrastructure advice, give at least one VERBATIM quote (copied exactly, 30-400 characters, one or two
-sentences) from a source's "text" that supports it, with the source number. pipefix checks each quote against
+sentences) from a source's "text" that supports it, with the source number. Strandline checks each quote against
 the page it downloaded; a setting without a quote that is really in the page is rejected. Do not quote search
 snippets, do not paraphrase inside quotes, do not cite a source whose text says nothing about the claim. Your
 rationale must reason FROM those quotes (say what the source says, then how it applies to this task's numbers).
@@ -272,7 +272,7 @@ def check(name: str, directive: str, value: str, ctx: dict) -> str | None:
     if task is None:
         return f"{name} is not one of the failed processes"
     if directive not in ALLOWED:
-        return f"{directive} is not a setting pipefix lets the AI change"
+        return f"{directive} is not a setting Strandline lets the AI change"
     if len(v) > 160:
         return "value too long"
     if directive == "memory":
@@ -352,7 +352,7 @@ def research(inv: Investigation | None, diagnoses: list[Diagnosis], cfg: RepoCon
         return res
     if not llm_key or not serper_key:
         res.error = ("AI research needs a Serper key and an LLM key: add them in the console, or set "
-                     "SERPER_API_KEY and PIPEFIX_LLM_API_KEY (or DEEPSEEK_API_KEY / OPENAI_API_KEY).")
+                     "SERPER_API_KEY and STRANDLINE_LLM_API_KEY (or DEEPSEEK_API_KEY / OPENAI_API_KEY).")
         return res
     ctx = context(inv, diagnoses, cfg, profiles)
     names = {t["process"] for t in ctx["failed_tasks"]}

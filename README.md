@@ -1,10 +1,10 @@
-# pipefix
+# Strandline
 
-**Your genomics pipeline failed at hour 6. pipefix finds out why from AWS, traces the setting that caused it in
+**Your genomics pipeline failed at hour 6. Strandline finds out why from AWS, traces the setting that caused it in
 your pipeline repo, and opens the merge request that fixes it.**
 
 ```bash
-pipefix investigate --batch-queue spot-queue --since 12h --repo . --open-pr
+strandline investigate --batch-queue spot-queue --since 12h --repo . --open-pr
 ```
 
 1. **Investigates through the AWS SDK (read-only).** It finds the failed AWS Batch jobs or HealthOmics run, reads
@@ -18,7 +18,7 @@ pipefix investigate --batch-queue spot-queue --since 12h --repo . --open-pr
    (`resourceLimits`, `params.max_memory`).
 3. **Diagnoses with evidence.** Rule-based and auditable: every diagnosis cites the exit code, numbers, log line,
    AWS status reason, HealthOmics failure code or CloudTrail event it used.
-4. **Fixes only what config should fix,** scoped to the failed processes, in `conf/pipefix.config`, and opens a
+4. **Fixes only what config should fix,** scoped to the failed processes, in `conf/strandline.config`, and opens a
    GitHub PR or GitLab MR with the evidence, the config trace and the platform findings. Account IDs are redacted.
 
 > Status: v0.2. Tested against a fake AWS account built from the documented API shapes (every call and field is
@@ -41,7 +41,7 @@ pipefix investigate --batch-queue spot-queue --since 12h --repo . --open-pr
 ## The console
 
 ```bash
-pipefix ui            # opens http://127.0.0.1:8787 in your browser
+strandline ui            # opens http://127.0.0.1:8787 in your browser
 ```
 
 A local web console for the same flow: pick a Batch queue, job ids or a HealthOmics run, watch the investigation
@@ -50,7 +50,7 @@ largest instance the queue can launch, any pipeline cap). Its evidence, the conf
 file and line sets the value today and what wins after the fix, its log, the diff, and buttons to write the change
 or open the merge request. **Try the demo** runs the whole flow against a built-in example account, with no AWS
 access needed. The console only listens on localhost and every action needs the page's session token. Fonts ship
-with pipefix, so it makes no third-party requests.
+with Strandline, so it makes no third-party requests.
 
 ## Setup
 
@@ -59,29 +59,29 @@ pip install -e '.[aws]'
 aws sso login            # or `aws configure`; any read-only profile works
 ```
 
-Permissions: [`iam/pipefix-readonly-policy.json`](iam/pipefix-readonly-policy.json) is the complete list, all
-read-only. pipefix refuses to call anything but Describe/Get/List/Lookup APIs.
+Permissions: [`iam/strandline-readonly-policy.json`](iam/strandline-readonly-policy.json) is the complete list, all
+read-only. Strandline refuses to call anything but Describe/Get/List/Lookup APIs.
 
 ## Use
 
 ```bash
 # Find failed jobs in a Batch queue from the last 12 hours and show the proposed change (dry run)
-pipefix investigate --batch-queue spot-queue --since 12h --repo ~/src/my-pipeline
+strandline investigate --batch-queue spot-queue --since 12h --repo ~/src/my-pipeline
 
 # Specific jobs, save the full report, open the PR/MR
-GITHUB_TOKEN=... pipefix investigate --batch-job 3f1c2a9e-... --repo . --report pipefix-report.md --open-pr
+GITHUB_TOKEN=... strandline investigate --batch-job 3f1c2a9e-... --repo . --report strandline-report.md --open-pr
 
 # A HealthOmics run
-pipefix investigate --omics-run 1234567 --repo . --region us-east-1
+strandline investigate --omics-run 1234567 --repo . --region us-east-1
 
 # Just the diagnosis, no repo
-pipefix investigate --omics-run 1234567 --diagnose-only
+strandline investigate --omics-run 1234567 --diagnose-only
 
 # Offline, from files you already have
-pipefix fix --trace results/pipeline_info/execution_trace.txt --log .nextflow.log --repo .
+strandline fix --trace results/pipeline_info/execution_trace.txt --log .nextflow.log --repo .
 ```
 
-`--open-pr` checks the token and the remote before writing anything, skips if an open pipefix PR/MR already
+`--open-pr` checks the token and the remote before writing anything, skips if an open strandline PR/MR already
 proposes the same change, and opens a draft (`--ready` for a normal one). GitLab is detected from the remote
 (`GITLAB_TOKEN`), or use `--provider gitlab`. Pass `--nf-profile` with the profiles the run used so profile-only
 settings are traced too.
@@ -89,7 +89,7 @@ settings are traced too.
 ## How it's built
 
 ```
-pipefix/
+strandline/
   aws/session.py      boto3 clients, read-only guard, throttling retries, audit log of every call
   aws/batch.py        failed jobs, attempts, logs, work dir; queue -> compute env -> launch template -> instances
   aws/workdir.py      .command.run / .err / .trace / .exitcode from the task's S3 work dir
@@ -106,7 +106,7 @@ pipefix/
 ## Roadmap
 
 1. Verify the fix by re-running the failed task (`-resume`) on a sandbox queue and attaching the result
-2. Trigger automatically: EventBridge rule on Batch job / HealthOmics run failure -> pipefix (Lambda or container)
+2. Trigger automatically: EventBridge rule on Batch job / HealthOmics run failure -> strandline (Lambda or container)
 3. Tool-specific fixes (STAR `--limitBAMsortRAM`, samtools sort `-m`, GATK heap) beyond resource changes
 4. Snakemake support; learning per-tool sizes from past runs; optional LLM explanation over the evidence
 

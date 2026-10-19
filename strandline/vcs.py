@@ -1,6 +1,6 @@
 """Open the fix as a GitHub pull request or GitLab merge request.
 
-Order matters: the token and the remote are checked first, then existing open pipefix MRs are searched for the
+Order matters: the token and the remote are checked first, then existing open strandline MRs are searched for the
 same change (same diff hash), and only then is anything committed or pushed. Uses git and the providers'
 REST APIs through the standard library.
 
@@ -62,7 +62,7 @@ def _who(provider: str, token: str, host: str) -> str:
         key = "login"
     else:
         url, hdr, key = f"https://{host}/api/v4/user", {"PRIVATE-TOKEN": token}, "username"
-    req = urllib.request.Request(url, headers={**hdr, "User-Agent": "pipefix"})
+    req = urllib.request.Request(url, headers={**hdr, "User-Agent": "strandline"})
     try:
         with urllib.request.urlopen(req, timeout=15) as r:
             return json.loads(r.read())[key]
@@ -129,7 +129,7 @@ def remote_info(repo: str | Path, remote: str = "origin", provider: str | None =
     try:
         url = git(repo, "remote", "get-url", remote)
     except RuntimeError:
-        raise RuntimeError(f"This repo has no '{remote}' remote, so pipefix can't open a merge request. "
+        raise RuntimeError(f"This repo has no '{remote}' remote, so Strandline can't open a merge request. "
                            f"Add one with `git remote add {remote} <url>`.") from None
     m = re.match(r"(?:https?://(?:[^@/]+@)?|ssh://git@|git@)(?P<host>[^/:]+)(?::\d+)?[/:](?P<path>.+?)(?:\.git)?/?$", url)
     if not m:
@@ -159,20 +159,20 @@ def _request(method: str, url: str, remote: Remote, payload: dict | None = None)
 
 
 def find_existing(remote: Remote, h: str) -> str | None:
-    """An open pipefix PR/MR for the same change (its branch ends with the diff hash)."""
+    """An open strandline PR/MR for the same change (its branch ends with the diff hash)."""
     if remote.provider == "github":
         prs = _request("GET", f"{remote.api}/repos/{remote.path}/pulls?state=open&per_page=100", remote) or []
-        return next((p["html_url"] for p in prs if p["head"]["ref"].startswith("pipefix/")
+        return next((p["html_url"] for p in prs if p["head"]["ref"].startswith("strandline/")
                      and p["head"]["ref"].endswith(h)), None)
     pid = urllib.parse.quote(remote.path, safe="")
     mrs = _request("GET", f"{remote.api}/projects/{pid}/merge_requests?state=opened&per_page=100", remote) or []
-    return next((m["web_url"] for m in mrs if m["source_branch"].startswith("pipefix/")
+    return next((m["web_url"] for m in mrs if m["source_branch"].startswith("strandline/")
                  and m["source_branch"].endswith(h)), None)
 
 
 def commit_branch(repo: str | Path, files: list[str], title: str, body: str, h: str) -> tuple[str, str]:
     base = git(repo, "rev-parse", "--abbrev-ref", "HEAD")
-    branch = f"pipefix/fix-{datetime.now():%Y%m%d-%H%M%S}-{h}"
+    branch = f"strandline/fix-{datetime.now():%Y%m%d-%H%M%S}-{h}"
     git(repo, "checkout", "-b", branch)
     git(repo, "add", *files)
     git(repo, "commit", "-m", title, "-m", body[:3000])

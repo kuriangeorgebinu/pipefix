@@ -1,12 +1,12 @@
-"""pipefix command line.
+"""Strandline command line.
 
 Investigate a failed run straight from AWS (read-only), trace the repo's config, and open the fix:
-  pipefix investigate --batch-queue my-queue --since 12h --repo .               # find failed jobs, show the diff
-  pipefix investigate --batch-job <id> [<id> ...] --repo . --open-pr            # open a PR/MR
-  pipefix investigate --omics-run 1234567 --repo . --report report.md
+  strandline investigate --batch-queue my-queue --since 12h --repo .               # find failed jobs, show the diff
+  strandline investigate --batch-job <id> [<id> ...] --repo . --open-pr            # open a PR/MR
+  strandline investigate --omics-run 1234567 --repo . --report report.md
 From files you already have (no AWS access needed):
-  pipefix diagnose --trace trace.txt --log .nextflow.log
-  pipefix fix --trace trace.txt --log .nextflow.log --repo . [--apply | --open-pr]
+  strandline diagnose --trace trace.txt --log .nextflow.log
+  strandline fix --trace trace.txt --log .nextflow.log --repo . [--apply | --open-pr]
 """
 from __future__ import annotations
 
@@ -58,7 +58,7 @@ def _deliver(a: argparse.Namespace, diagnoses: list[Diagnosis], inv: Investigati
         from .research import research
         ai = research(inv, diagnoses, cfg, tuple(a.nf_profile or []), on_stage=lambda n: print(f"  {n}"))
         if ai.error:
-            print(f"[warn] {ai.error} Using pipefix's rule-based fix.")
+            print(f"[warn] {ai.error} Using Strandline's rule-based fix.")
         for r in ai.rejected:
             print(f"[ai rejected] {r}")
     patch = build_patch(diagnoses, repo, a.min_confidence, inv, cfg, tuple(a.nf_profile or []), ai=ai)
@@ -82,10 +82,10 @@ def _deliver(a: argparse.Namespace, diagnoses: list[Diagnosis], inv: Investigati
         remote = vcs.remote_info(repo, a.remote, a.provider)          # fails before anything is written
         h = vcs.diff_hash(diff)
         if existing := vcs.find_existing(remote, h):
-            print(f"An open pipefix PR/MR already proposes this change: {existing}")
+            print(f"An open strandline PR/MR already proposes this change: {existing}")
             return 0
         if vcs.git(repo, "status", "--porcelain", "--", *patch.files.keys()):
-            raise SystemExit("The files pipefix changes have uncommitted edits; commit or stash them first.")
+            raise SystemExit("The files Strandline changes have uncommitted edits; commit or stash them first.")
     written = patch.apply(repo)
     print("Wrote: " + ", ".join(written))
     if a.open_pr:
@@ -105,7 +105,7 @@ def _agent(a: argparse.Namespace) -> int:
     try:
         clients = boto3_clients(a.profile, a.region)
     except AwsUnavailable as e:
-        print(f"pipefix: {e}", file=sys.stderr)
+        print(f"strandline: {e}", file=sys.stderr)
         return 2
     goal = {"omics_run": a.omics_run, "batch_jobs": a.batch_job, "batch_queue": a.batch_queue}
     repo = Path(a.repo).resolve() if a.repo else None
@@ -129,8 +129,8 @@ def _agent(a: argparse.Namespace) -> int:
 
 
 def main(argv: list[str] | None = None) -> int:
-    p = argparse.ArgumentParser(prog="pipefix", description="Diagnose failed Nextflow runs and open the fix.")
-    p.add_argument("--version", action="version", version=f"pipefix {__version__}")
+    p = argparse.ArgumentParser(prog="strandline", description="Diagnose failed Nextflow runs and open the fix.")
+    p.add_argument("--version", action="version", version=f"strandline {__version__}")
     sub = p.add_subparsers(dest="cmd", required=True)
 
     def outputs(s, fix: bool):
@@ -148,7 +148,7 @@ def main(argv: list[str] | None = None) -> int:
             s.add_argument("--env-file", action="append", help="read SERPER_API_KEY / DEEPSEEK_API_KEY etc. from this "
                                                                ".env file (only those keys)")
             s.add_argument("--ai-fix", action="store_true",
-                           help="let an LLM research the fix in AWS/Nextflow/Terraform docs (via Serper); pipefix "
+                           help="let an LLM research the fix in AWS/Nextflow/Terraform docs (via Serper); strandline "
                                 "checks every value before writing it. Needs SERPER_API_KEY and an LLM key")
 
     for name in ("diagnose", "fix"):
@@ -195,7 +195,7 @@ def main(argv: list[str] | None = None) -> int:
     s.add_argument("--transcripts", help="save each case's conversations and result in this folder")
     s.add_argument("--env-file", action="append", help="read the AI keys from this .env file")
 
-    s = sub.add_parser("ui", help="open the pipefix console in your browser")
+    s = sub.add_parser("ui", help="open the Strandline console in your browser")
     s.add_argument("--port", type=int, default=8787)
     s.add_argument("--no-browser", action="store_true")
     s.add_argument("--env-file", action="append", help="read the AI research keys (SERPER_API_KEY, DEEPSEEK_API_KEY, "
@@ -204,13 +204,13 @@ def main(argv: list[str] | None = None) -> int:
     a = p.parse_args(argv)
     import os
     from . import keys
-    for f in (getattr(a, "env_file", None) or []) + ([os.environ["PIPEFIX_ENV_FILE"]]
-                                                       if os.environ.get("PIPEFIX_ENV_FILE") else []):
+    for f in (getattr(a, "env_file", None) or []) + ([os.environ["STRANDLINE_ENV_FILE"]]
+                                                       if os.environ.get("STRANDLINE_ENV_FILE") else []):
         try:
             found = keys.load_env_file(f)
-            print(f"Read {', '.join(found) or 'no pipefix keys'} from {f}")
+            print(f"Read {', '.join(found) or 'no Strandline keys'} from {f}")
         except OSError as e:
-            print(f"pipefix: can't read {f}: {e.strerror}", file=sys.stderr)
+            print(f"strandline: can't read {f}: {e.strerror}", file=sys.stderr)
     if a.cmd == "ui":
         from .ui.server import serve
         serve(a.port, not a.no_browser)
@@ -236,7 +236,7 @@ def main(argv: list[str] | None = None) -> int:
                                          since_hours=a.since, name_prefix=a.name_prefix, omics_run=a.omics_run,
                                          cloudtrail=not a.no_cloudtrail)
         except (AwsUnavailable, RuntimeError, ValueError) as e:
-            print(f"pipefix: {redact(str(e))}", file=sys.stderr)
+            print(f"strandline: {redact(str(e))}", file=sys.stderr)
             return 2
         print(f"Investigated {redact(inv.run_ref)} ({inv.platform}): {len(inv.failures)} failed task(s), "
               f"{len(inv.calls)} read-only AWS calls.")

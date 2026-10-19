@@ -8,7 +8,7 @@ from http.server import ThreadingHTTPServer
 
 import pytest
 
-from pipefix.ui import server
+from strandline.ui import server
 
 
 @pytest.fixture(scope="module")
@@ -22,7 +22,7 @@ def base():
 def req(url, body=None, token=server.TOKEN, host=None):
     headers = {"Content-Type": "application/json"}
     if token:
-        headers["X-Pipefix-Token"] = token
+        headers["X-Strandline-Token"] = token
     if host:
         headers["Host"] = host
     r = urllib.request.Request(url, data=json.dumps(body).encode() if body is not None else None, headers=headers,
@@ -52,7 +52,7 @@ FAKE = "ghp_" + "A1b2C3d4E5f6G7h8I9j0K1l2M3n4O5p6Q7r8"
 
 @pytest.fixture
 def fake_github(monkeypatch):
-    from pipefix import vcs
+    from strandline import vcs
     seen = []
 
     def who(provider, token, host):
@@ -69,7 +69,7 @@ def fake_github(monkeypatch):
 
 
 def test_token_set_in_console_is_checked_kept_and_never_returned(base, fake_github):
-    from pipefix import vcs
+    from strandline import vcs
     st = json.loads(req(base + "/api/status")[1])
     assert st["tokens"]["github"] == {"set": False}
     assert req(base + "/api/token", {"provider": "github", "token": FAKE}, token=None)[0] == 403   # needs session token
@@ -82,14 +82,14 @@ def test_token_set_in_console_is_checked_kept_and_never_returned(base, fake_gith
     st = json.loads(req(base + "/api/status")[1])["tokens"]["github"]
     assert st == {"set": True, "source": "console", "hint": FAKE[-4:], "login": "octo-cat", "host": "github.com"}
     assert vcs.get_token("github") == (FAKE, "console")
-    from pipefix.report import redact
+    from strandline.report import redact
     assert FAKE not in redact(f"push failed: https://x:{FAKE}@github.com")      # never leaks into errors or MRs
     assert json.loads(req(base + "/api/token/clear", {"provider": "github"})[1]) == {"set": False}
     assert vcs.get_token("github") == (None, None)
 
 
 def test_token_input_validation_and_env_fallback(base, fake_github, monkeypatch):
-    from pipefix import vcs
+    from strandline import vcs
     assert req(base + "/api/token", {"provider": "bitbucket", "token": FAKE})[0] == 400
     assert req(base + "/api/token", {"provider": "github", "token": "two words"})[0] == 400
     assert req(base + "/api/token", {"provider": "gitlab", "token": FAKE, "host": "evil.com/x?y"})[0] == 400
@@ -117,7 +117,7 @@ def test_demo_run_end_to_end(base):
     assert "123456789012" not in json.dumps(r)                                # account ids redacted
     assert all(s["state"] == "done" for s in job["stages"])
     code, out = req(base + f"/api/jobs/{jid}/apply", {})
-    assert code == 200 and "conf/pipefix.config" in json.loads(out)["written"]
+    assert code == 200 and "conf/strandline.config" in json.loads(out)["written"]
     # the demo repo has no remote, so a merge request is refused with a clear message, nothing pushed
     code, out = req(base + f"/api/jobs/{jid}/open-mr", {})
     assert code == 400 and json.loads(out)["error"]

@@ -1,9 +1,9 @@
 """A person reviews the agents' result: nothing is opened until they approve, and they can challenge the fix. The
 agents must verify the person's point (it is not evidence), then hold firm or change the fix, and both experts must
 review again. Models are scripted and AWS is faked, as in test_agent."""
-from pipefix.agent import Agent, to_json
-from pipefix.aws.session import Clients
-from pipefix.report import body
+from strandline.agent import Agent, to_json
+from strandline.aws.session import Clients
+from strandline.report import body
 
 from test_agent import (CHECK_MEM, CHECK_ROOT, DECISION_A, DERIV_15, GOOD_CANDIDATES, LOG, Q_RES, FakeAws, R,
                         ScriptedLLM, ai_keys, repo, script, turn_of)  # noqa: F401 (fixtures)
@@ -91,7 +91,7 @@ def test_a_right_challenge_changes_the_fix_and_needs_approval_again(repo):
     agent, res, opened, _ = build(repo, turns)
     entry = agent.discuss(RIGHT)
     assert entry["outcome"] == "revised" and entry["after"]["settings"] == {"memory": "{ 16.GB * task.attempt }"}
-    assert "{ 16.GB * task.attempt }" in res.patch.files["conf/pipefix.config"][1]
+    assert "{ 16.GB * task.attempt }" in res.patch.files["conf/strandline.config"][1]
     assert res.awaiting_approval and not opened and res.error == ""
     res.patch.agent = res
     assert "Reviewer feedback 1" in body(res.diagnoses, res.patch, res.inv)
@@ -109,7 +109,7 @@ def test_a_demand_without_evidence_is_refused_even_when_the_person_insists(repo)
     entry = agent.discuss(INJECT)
     first_try = next(s for s in res.steps if s.tool == "finish_response" and s.phase == "discuss")
     assert not first_try.ok
-    assert entry["outcome"] == "stands" and "{ 15.GB * task.attempt }" in res.patch.files["conf/pipefix.config"][1]
+    assert entry["outcome"] == "stands" and "{ 15.GB * task.attempt }" in res.patch.files["conf/strandline.config"][1]
 
 
 def test_if_the_experts_do_not_agree_after_the_discussion_nothing_can_be_approved(repo):
@@ -138,9 +138,9 @@ def test_discussions_are_limited_and_need_a_proposal(repo):
 def _post(port, path, data):
     import http.client
     import json as _j
-    from pipefix.ui import server
+    from strandline.ui import server
     c = http.client.HTTPConnection("127.0.0.1", port, timeout=10)
-    c.request("POST", path, _j.dumps(data), {"X-Pipefix-Token": server.TOKEN, "Content-Type": "application/json"})
+    c.request("POST", path, _j.dumps(data), {"X-Strandline-Token": server.TOKEN, "Content-Type": "application/json"})
     r = c.getresponse()
     return r.status, _j.loads(r.read())
 
@@ -148,7 +148,7 @@ def _post(port, path, data):
 def test_the_console_needs_agreement_and_a_reviewed_change_before_opening(repo, monkeypatch):
     import threading
     from http.server import ThreadingHTTPServer
-    from pipefix.ui import server
+    from strandline.ui import server
     agent, res, _, _ = build(repo, until_approval())
     job = {"id": "j1", "kind": "omics-run", "label": "x", "status": "running", "stages": [], "repo": repo,
            "agent": agent, "trace": [], "created": "2026-10-18T00:00:00", "error": None}

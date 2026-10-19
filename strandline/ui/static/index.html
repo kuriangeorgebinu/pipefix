@@ -3,17 +3,17 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<meta name="pipefix-token" content="__PIPEFIX_TOKEN__">
-<title>pipefix console</title>
+<meta name="strandline-token" content="__STRANDLINE_TOKEN__">
+<title>Strandline console</title>
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cpath d='M2 26 Q6 4 10 26' fill='none' stroke='%231F9D5A' stroke-width='3'/%3E%3Cpath d='M9 26 Q13 10 17 26' fill='none' stroke='%232563C9' stroke-width='3'/%3E%3Cpath d='M16 26 Q20 14 24 26' fill='none' stroke='%23C98A00' stroke-width='3'/%3E%3Cpath d='M22 26 Q26 7 30 26' fill='none' stroke='%23D23B32' stroke-width='3'/%3E%3C/svg%3E">
 <style>
-/* Fonts ship with pipefix (SIL Open Font License), so the console works offline and calls no third party. */
+/* Fonts ship with strandline (SIL Open Font License), so the console works offline and calls no third party. */
 @font-face { font-family: "Instrument Sans"; src: url("/fonts/instrument-sans-var.woff2") format("woff2");
   font-weight: 400 700; font-stretch: 75% 100%; font-display: swap; }
 @font-face { font-family: "JetBrains Mono"; src: url("/fonts/jetbrains-mono-400.woff2") format("woff2"); font-weight: 400; font-display: swap; }
 @font-face { font-family: "JetBrains Mono"; src: url("/fonts/jetbrains-mono-500.woff2") format("woff2"); font-weight: 500; font-display: swap; }
 /* ------------------------------------------------------------------
-   pipefix console. Colour system borrowed from Sanger sequencing traces:
+   strandline console. Colour system borrowed from Sanger sequencing traces:
    A green = fixed, C blue = platform fact, G amber = warning, T red = failure.
    ------------------------------------------------------------------ */
 :root {
@@ -639,9 +639,9 @@ details.agentlog > summary .sum-d { font-size: 13px; color: var(--ink-3); }
 <body>
 <a class="skip" href="#main">Skip to results</a>
 <header class="top">
-  <a class="brand" href="/" aria-label="pipefix console home">
+  <a class="brand" href="/" aria-label="Strandline console home">
     <svg viewBox="0 0 34 22" aria-hidden="true"><path d="M1 21 Q5 1 9 21" fill="none" stroke="var(--A)" stroke-width="2.4" stroke-linecap="round"/><path d="M8 21 Q12 8 16 21" fill="none" stroke="var(--C)" stroke-width="2.4" stroke-linecap="round"/><path d="M15 21 Q19 12 23 21" fill="none" stroke="var(--G)" stroke-width="2.4" stroke-linecap="round"/><path d="M22 21 Q27 3 32 21" fill="none" stroke="var(--T)" stroke-width="2.4" stroke-linecap="round"/></svg>
-    <b>pipefix</b><span id="ver"></span>
+    <b>strandline</b><span id="ver"></span>
   </a>
   <div class="conn" id="conn" role="status"><i></i><span>Checking AWS access</span></div>
   <button class="iconbtn" id="theme" type="button" aria-label="Switch light or dark theme" title="Theme">
@@ -663,7 +663,7 @@ details.agentlog > summary .sum-d { font-size: 13px; color: var(--ink-3); }
         <div class="field" id="f-value">
           <label for="value" id="value-label">Queue name</label>
           <input id="value" class="code" placeholder="spot-queue">
-          <small id="value-hint">pipefix finds the jobs that failed in this queue.</small>
+          <small id="value-hint">Strandline finds the jobs that failed in this queue.</small>
         </div>
         <div class="field" id="f-since">
           <label for="since">Look back</label>
@@ -689,17 +689,17 @@ details.agentlog > summary .sum-d { font-size: 13px; color: var(--ink-3); }
           </div>
           <small id="fixmode-hint"></small>
         </div>
-        <p class="note" id="f-agent-mr" hidden>When both expert agents agree, you review the change and approve it; only then does pipefix open the merge request. You can also challenge the fix and the agents will check your point.</p>
+        <p class="note" id="f-agent-mr" hidden>When both expert agents agree, you review the change and approve it; only then does Strandline open the merge request. You can also challenge the fix and the agents will check your point.</p>
         <input type="checkbox" id="ai" hidden>
         <p class="note" id="demo-note" hidden>Runs against a built-in example account with four failed tasks and an nf-core style pipeline. Nothing touches AWS or your files.</p>
         <button class="btn primary run-btn" id="run" type="submit">Investigate</button>
-        <p class="note">Read-only in AWS. pipefix only changes your repo when you choose Write changes or Open merge request.</p>
+        <p class="note">Read-only in AWS. Strandline only changes your repo when you choose Write changes or Open merge request.</p>
       </form>
     </section>
     <section class="git" aria-labelledby="git-h">
       <h2 id="git-h">Merge requests</h2>
       <ul id="git-list"><li><i></i><span>Checking</span></li></ul>
-      <p class="note">Tokens stay in this console's memory: never saved to disk, never shown again. Stopping pipefix forgets them.</p>
+      <p class="note">Tokens stay in this console's memory: never saved to disk, never shown again. Stopping Strandline forgets them.</p>
     </section>
     <section class="git" aria-labelledby="ai-h">
       <h2 id="ai-h">AI fix research</h2>
@@ -718,7 +718,7 @@ details.agentlog > summary .sum-d { font-size: 13px; color: var(--ink-3); }
 
 <dialog id="mr-dialog" aria-labelledby="mr-h">
   <h2 id="mr-h">Open a merge request</h2>
-  <p>pipefix will:</p>
+  <p>Strandline will:</p>
   <ul id="mr-steps"></ul>
   <label class="reviewed" id="mr-reviewed-l" hidden><input type="checkbox" id="mr-reviewed"> <span>I reviewed the cause, the change and the evidence. This AI-generated fix can be wrong; I take responsibility for proposing it.</span></label>
   <label><input type="checkbox" id="mr-ready"> Open it ready for review instead of as a draft</label>
@@ -744,7 +744,7 @@ details.agentlog > summary .sum-d { font-size: 13px; color: var(--ink-3); }
              data-1p-ignore data-lpignore="true" aria-describedby="tok-note">
       <button class="btn" type="button" id="tok-show" aria-pressed="false" aria-controls="tok-value">Show</button>
     </div>
-    <small id="tok-note">pipefix checks it with the provider, then keeps it in memory only. The page never gets it back.</small>
+    <small id="tok-note">Strandline checks it with the provider, then keeps it in memory only. The page never gets it back.</small>
   </div>
   <p class="err" id="tok-err" role="alert" hidden></p>
   <div class="row">
@@ -764,7 +764,7 @@ details.agentlog > summary .sum-d { font-size: 13px; color: var(--ink-3); }
       <input id="key-value" type="password" autocomplete="off" autocapitalize="off" spellcheck="false" data-1p-ignore data-lpignore="true">
       <button class="btn" type="button" id="key-show" aria-pressed="false" aria-controls="key-value">Show</button>
     </div>
-    <small>Checked with the provider, then kept in memory only. Tip: start pipefix with <code>--env-file</code> to reuse keys from a .env file.</small>
+    <small>Checked with the provider, then kept in memory only. Tip: start Strandline with <code>--env-file</code> to reuse keys from a .env file.</small>
   </div>
   <p class="err" id="key-err" role="alert" hidden></p>
   <div class="row">
@@ -776,7 +776,7 @@ details.agentlog > summary .sum-d { font-size: 13px; color: var(--ink-3); }
 <template id="welcome">
   <div class="welcome">
     <h1>Find out why a pipeline run failed, and fix it with one merge request.</h1>
-    <p>pipefix reads the failed tasks from AWS, works out which setting in your pipeline caused each failure, and proposes the smallest config change that fixes it. Failures that config can't fix are explained, with the evidence.</p>
+    <p>Strandline reads the failed tasks from AWS, works out which setting in your pipeline caused each failure, and proposes the smallest config change that fixes it. Failures that config can't fix are explained, with the evidence.</p>
     <svg class="trace" id="trace" viewBox="0 0 640 86" aria-hidden="true"></svg>
     <button class="btn primary" type="button" id="try-demo">Try the demo</button>
     <div class="steps-intro">
@@ -789,7 +789,7 @@ details.agentlog > summary .sum-d { font-size: 13px; color: var(--ink-3); }
 
 <script>
 "use strict";
-const TOKEN = document.querySelector('meta[name="pipefix-token"]').content;
+const TOKEN = document.querySelector('meta[name="strandline-token"]').content;
 const $ = (s, el = document) => el.querySelector(s);
 const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const ticks = s => esc(s).replace(/`([^`]+)`/g, "<code>$1</code>");
@@ -798,19 +798,19 @@ const store = { get(k) { try { return localStorage.getItem(k); } catch { return 
 
 /* ---------- theme ---------- */
 (function () {
-  const t = store.get("pipefix-theme");
+  const t = store.get("strandline-theme");
   if (t) document.documentElement.dataset.theme = t;
   $("#theme").addEventListener("click", () => {
     const dark = getComputedStyle(document.documentElement).colorScheme.includes("dark");
     const next = dark ? "light" : "dark";
     document.documentElement.dataset.theme = next;
-    store.set("pipefix-theme", next);
+    store.set("strandline-theme", next);
   });
 })();
 
 /* ---------- API ---------- */
 async function api(path, body) {
-  const opt = body === undefined ? {} : { method: "POST", headers: { "Content-Type": "application/json", "X-Pipefix-Token": TOKEN }, body: JSON.stringify(body) };
+  const opt = body === undefined ? {} : { method: "POST", headers: { "Content-Type": "application/json", "X-Strandline-Token": TOKEN }, body: JSON.stringify(body) };
   const r = await fetch(path, opt);
   const data = await r.json().catch(() => ({ error: `The console answered ${r.status}.` }));
   if (!r.ok) throw new Error(data.error || `Request failed (${r.status}).`);
@@ -833,7 +833,7 @@ async function loadStatus() {
       : "No AWS access, demo only";
     c.title = a.state === "ok" ? a.identity : (a.detail || "");
     if (STATUS.cwd_is_pipeline && !$("#repo").value) $("#repo").value = STATUS.cwd;
-    if (a.state !== "ok" && !store.get("pipefix-mode")) setMode("demo");
+    if (a.state !== "ok" && !store.get("strandline-mode")) setMode("demo");
   } catch (e) { $("#conn span").textContent = "Console not reachable"; }
 }
 
@@ -867,7 +867,7 @@ let TOK_P = "github";
 function openToken(p) {
   TOK_P = p; const d = PROV[p], s = (STATUS.tokens || {})[p] || {};
   $("#tok-h").textContent = `Add a ${d.name} token`;
-  $("#tok-intro").innerHTML = `pipefix uses it to push the fix branch and open ${d.what}. <a href="${d.make}" target="_blank" rel="noopener">Create one on ${d.name}</a> with:`;
+  $("#tok-intro").innerHTML = `Strandline uses it to push the fix branch and open ${d.what}. <a href="${d.make}" target="_blank" rel="noopener">Create one on ${d.name}</a> with:`;
   $("#tok-scopes").innerHTML = d.scopes.map(x => `<li>${esc(x)}</li>`).join("");
   $("#tok-host").value = s.host || d.host; $("#tok-host-hint").textContent = d.hostHint;
   $("#tok-value").value = ""; $("#tok-value").type = "password";
@@ -925,7 +925,7 @@ let KEY_KIND = "serper";
 function openKey(kind) {
   KEY_KIND = kind; const d = KEYS[kind], s = (STATUS.keys || {})[kind] || {};
   $("#key-h").textContent = `Add a ${d.name} key`;
-  $("#key-intro").innerHTML = `${kind === "serper" ? "Used to search AWS, Nextflow and Terraform documentation." : "The model reads the search results and proposes the fix; pipefix checks every value."} <a href="${d.make}" target="_blank" rel="noopener">Get a key</a>.`;
+  $("#key-intro").innerHTML = `${kind === "serper" ? "Used to search AWS, Nextflow and Terraform documentation." : "The model reads the search results and proposes the fix; Strandline checks every value."} <a href="${d.make}" target="_blank" rel="noopener">Get a key</a>.`;
   $("#key-base-f").hidden = $("#key-model-f").hidden = kind !== "llm";
   $("#key-base").value = (STATUS.keys?.llm?.base_url) || "https://api.deepseek.com";
   $("#key-model").value = (STATUS.keys?.llm?.model) || "deepseek-chat";
@@ -955,15 +955,15 @@ $("#key-save").addEventListener("click", async () => {
   } catch (x) { err.textContent = x.message; err.hidden = false; }
   finally { btn.disabled = false; btn.textContent = "Check and save"; }
 });
-let FIXMODE = store.get("pipefix-fixmode") || "rules";
+let FIXMODE = store.get("strandline-fixmode") || "rules";
 const FM_HINT = {
-  rules: "pipefix's own rules diagnose and fix. Nothing is sent to an AI.",
-  ai: "pipefix investigates; an LLM researches AWS, Nextflow and Terraform docs and proposes the fix, with verified quotes.",
+  rules: "Strandline's own rules diagnose and fix. Nothing is sent to an AI.",
+  ai: "Strandline investigates; an LLM researches AWS, Nextflow and Terraform docs and proposes the fix, with verified quotes.",
   agent: "Three AI agents debug on AWS (read-only), research the docs, pick a fix and check each other. You review the result, can challenge it, and approve the merge request.",
 };
 function setFixMode(m) {
   if (m !== "rules" && !aiReady()) m = "rules";
-  FIXMODE = m; store.set("pipefix-fixmode", m);
+  FIXMODE = m; store.set("strandline-fixmode", m);
   for (const b of document.querySelectorAll("#fixmode button")) b.setAttribute("aria-checked", String(b.dataset.fm === m));
   $("#fixmode-hint").textContent = FM_HINT[m] + (m !== "rules" ? "" : aiReady() ? "" : " Add the AI keys below to use AI.");
   $("#f-agent-mr").hidden = m !== "agent";
@@ -973,14 +973,14 @@ $("#fixmode").addEventListener("click", e => { const b = e.target.closest("butto
 
 /* ---------- form ---------- */
 const MODES = {
-  "batch-queue": { label: "Queue name", ph: "spot-queue", hint: "pipefix finds the jobs that failed in this queue." },
+  "batch-queue": { label: "Queue name", ph: "spot-queue", hint: "Strandline finds the jobs that failed in this queue." },
   "batch-jobs": { label: "Job ids", ph: "3f1c2a9e-1b7d-4c55-…", hint: "One or more AWS Batch job ids, separated by spaces." },
   "omics-run": { label: "Run id", ph: "1234567", hint: "The id of the failed HealthOmics run." },
   "demo": {},
 };
 let MODE = "batch-queue";
 function setMode(m) {
-  MODE = m; store.set("pipefix-mode", m);
+  MODE = m; store.set("strandline-mode", m);
   for (const b of document.querySelectorAll("#modes button")) b.setAttribute("aria-checked", String(b.dataset.mode === m));
   const demo = m === "demo";
   $("#f-value").hidden = demo; $("#f-repo").hidden = demo; $("#f-more").hidden = demo;
@@ -996,10 +996,10 @@ $("#modes").addEventListener("keydown", e => {
   setMode(n.dataset.mode); n.focus(); e.preventDefault();
 });
 for (const id of ["repo", "profile", "region", "nfp"]) {
-  const v = store.get("pipefix-" + id); if (v) $("#" + id).value = v;
-  $("#" + id).addEventListener("change", e => store.set("pipefix-" + id, e.target.value));
+  const v = store.get("strandline-" + id); if (v) $("#" + id).value = v;
+  $("#" + id).addEventListener("change", e => store.set("strandline-" + id, e.target.value));
 }
-setMode(store.get("pipefix-mode") || "batch-queue");
+setMode(store.get("strandline-mode") || "batch-queue");
 
 $("#form").addEventListener("submit", async e => {
   e.preventDefault();
@@ -1011,7 +1011,7 @@ $("#form").addEventListener("submit", async e => {
   $("#value").setCustomValidity("");
   $("#run").disabled = true;
   try { const { id } = await api("/api/investigate", req); CURRENT = id; poll(id); refreshHistory(); }
-  catch (err) { showError("pipefix couldn't start the investigation", err.message); }
+  catch (err) { showError("Strandline couldn't start the investigation", err.message); }
   finally { $("#run").disabled = false; }
 });
 $("#value").addEventListener("input", e => e.target.setCustomValidity(""));
@@ -1127,7 +1127,7 @@ function logHTML(events) {
         ${target ? `<p class="args">re-checks <a href="#lg-${esc(target.n)}">#${esc(target.n)} ${esc(callLabel(target))}</a> (by ${esc(WHO[target.agent] || "Primary")})</p>`
           : e.args && Object.keys(e.args).length && !e.args["..."] && !e.tool.startsWith("finish_") ? `<code class="args">${esc(argText(e.tool, e.args))}</code>` : ""}
         ${e.tool === "finish_review" && r?.ok ? `<p class="why">Submitted its review (see the verdict below).</p>` : `<p class="why"><span class="lg-k">Why</span> ${esc(e.text)}</p>`}
-        ${r ? (r.ok ? `<details class="res"><summary>Result${r.full ? ` (first ${r.text.length} of ${r.full} characters)` : ""}</summary><pre tabindex="0">${esc(r.text)}</pre></details>` : `<p class="refused"><b>Refused by pipefix:</b> ${esc(r.text.replace(/^REFUSED:\s*/, ""))}</p>`) : ""}
+        ${r ? (r.ok ? `<details class="res"><summary>Result${r.full ? ` (first ${r.text.length} of ${r.full} characters)` : ""}</summary><pre tabindex="0">${esc(r.text)}</pre></details>` : `<p class="refused"><b>Refused by Strandline:</b> ${esc(r.text.replace(/^REFUSED:\s*/, ""))}</p>`) : ""}
       </div></li>`);
     } else if (e.kind === "review") {
       verdict[ag] = e.verdict;
@@ -1179,7 +1179,7 @@ function showAgentProgress(job) {
 async function poll(id) {
   let job;
   const since = TRACE.id === id ? TRACE.events.length : 0;
-  try { job = await api(`/api/jobs/${id}?since=${since}`); } catch (e) { return showError("pipefix lost track of this investigation", e.message); }
+  try { job = await api(`/api/jobs/${id}?since=${since}`); } catch (e) { return showError("Strandline lost track of this investigation", e.message); }
   if (id !== CURRENT) return;
   if (job.status === "running") {
     if (job.trace) showAgentProgress(job); else showProgress(job);
@@ -1303,7 +1303,7 @@ function answerCard(r, job) {
     ${changes.length ? `<ul class="changes" aria-label="Setting changes">${changes.join("")}</ul>${fixedF.some(f => Object.values(f.fix.settings).some(v => /task\.attempt/.test(v))) ? `<p class="foot">Grows with each retry (× task.attempt).</p>` : ""}` : `<p class="nofix">No config change ${stopped(r) ? "was made" : "can fix this"}.</p>`}
     ${chips ? `<div class="chips">${chips}</div>` : ""}
     ${a?.error ? `<p class="result-msg err">${esc(firstSentence(a.error, 260))}</p>` : ""}
-    ${a ? `<p class="disclaimer"><svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true"><path fill="currentColor" d="M8 1.5 15 14H1L8 1.5Zm0 4a.75.75 0 0 0-.75.75v3.5a.75.75 0 0 0 1.5 0v-3.5A.75.75 0 0 0 8 5.5Zm0 6.25a.9.9 0 1 0 0 1.8.9.9 0 0 0 0-1.8Z"/></svg><span><b>AI-generated, and AI can be wrong.</b> pipefix re-checked every quote and number, and two expert agents reviewed it, but a person should review it before it is merged.</span></p>` : ""}
+    ${a ? `<p class="disclaimer"><svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true"><path fill="currentColor" d="M8 1.5 15 14H1L8 1.5Zm0 4a.75.75 0 0 0-.75.75v3.5a.75.75 0 0 0 1.5 0v-3.5A.75.75 0 0 0 8 5.5Zm0 6.25a.9.9 0 1 0 0 1.8.9.9 0 0 0 0-1.8Z"/></svg><span><b>AI-generated, and AI can be wrong.</b> Strandline re-checked every quote and number, and two expert agents reviewed it, but a person should review it before it is merged.</span></p>` : ""}
     <div class="answer-foot">
       ${mr ? `<a class="btn go" href="${esc(mr)}" target="_blank" rel="noopener">View merge request<span class="sr"> (opens in a new tab)</span></a>`
            : r.approval_needed ? `<div class="approve-row"><button class="btn go" type="button" id="act-approve">Approve and open merge request</button><a class="btn" href="#discuss-h">I disagree</a></div>`
@@ -1380,7 +1380,7 @@ function legendHTML(r) {
 /* ---------- how we know ---------- */
 function howWeKnow(r) {
   const a = r.agent, ai = r.ai;
-  if (!a && (!ai || ai.error)) return ai?.error ? `<section class="section"><h2>AI research</h2><p class="note">${esc(ai.error)} The fix above is pipefix's rule-based one.</p></section>` : "";
+  if (!a && (!ai || ai.error)) return ai?.error ? `<section class="section"><h2>AI research</h2><p class="note">${esc(ai.error)} The fix above is Strandline's rule-based one.</p></section>` : "";
   const srcs = ai?.sources || [];
   const srcName = n => { const s = srcs.find(x => x.n === n); return s ? `<a href="${esc(s.url)}" target="_blank" rel="noopener">${esc(s.title || host(s.url))}</a>` : `source ${esc(n)}`; };
   let body = "";
@@ -1396,7 +1396,7 @@ function howWeKnow(r) {
       return `<li>${who(v.agent)} <b class="${v.verdict === "agree" ? "ok" : "bad"}">${v.verdict === "agree" ? "Agreed" : "Objected"}</b> <span>${ok} of ${v.checks.length} checks confirmed${a.review.rounds.length > 1 ? `, round ${last.round}` : ""}</span></li>`; }).join("")}</ul>`;
     body += `<details class="more-d"><summary>Decision, alternatives and the full expert review</summary>
       ${a.decision?.reasons ? `<h3>Why this fix</h3><p>${esc(a.decision.reasons)}</p>` : ""}
-      ${Object.keys(a.decision?.why_not || {}).length ? `<h3>Alternatives not chosen</h3><ul class="alts">${a.candidates.filter(x => x.id !== a.decision.chosen).map(x => `<li><b>${esc(x.title)}</b> ${Object.entries(x.settings).map(([k, v]) => `<code>${esc(k)} = ${esc(v)}</code>`).join(" ") || "<i>no config change</i>"}<p>${esc(a.decision.why_not[x.id] || "")}</p>${x.valid ? "" : `<p class="rej">Failed pipefix's checks: ${esc(x.problems.join("; "))}</p>`}</li>`).join("")}</ul>` : ""}
+      ${Object.keys(a.decision?.why_not || {}).length ? `<h3>Alternatives not chosen</h3><ul class="alts">${a.candidates.filter(x => x.id !== a.decision.chosen).map(x => `<li><b>${esc(x.title)}</b> ${Object.entries(x.settings).map(([k, v]) => `<code>${esc(k)} = ${esc(v)}</code>`).join(" ") || "<i>no config change</i>"}<p>${esc(a.decision.why_not[x.id] || "")}</p>${x.valid ? "" : `<p class="rej">Failed Strandline's checks: ${esc(x.problems.join("; "))}</p>`}</li>`).join("")}</ul>` : ""}
       ${a.decision?.risks ? `<h3>Risks</h3><p>${esc(a.decision.risks)}</p>` : ""}
       ${reviewHTML(a)}
     </details>`;
@@ -1409,7 +1409,7 @@ function howWeKnow(r) {
     <ol class="cites">${read.map(s => `<li class="${cited.has(s.n) ? "cited" : ""}"><span class="n">${s.n}</span><div><a href="${esc(s.url)}" target="_blank" rel="noopener noreferrer">${esc(s.title || s.url)}</a><div class="host">${esc(host(s.url))}</div></div></li>`).join("")}</ol>
     ${ai?.queries?.length ? `<p class="note">Searches: ${ai.queries.map(q => `<code>${esc(q)}</code>`).join(" ")}</p>` : ""}</details>`;
   return `<section class="section" aria-labelledby="know-h"><h2 id="know-h">How we know</h2>
-    <p class="lede">Every number is a formula over values quoted from the run or the docs; pipefix re-checked each quote and recomputed each formula.</p>${body}</section>`;
+    <p class="lede">Every number is a formula over values quoted from the run or the docs; Strandline re-checked each quote and recomputed each formula.</p>${body}</section>`;
 }
 
 function reviewHTML(a) {
@@ -1436,7 +1436,7 @@ function platformBlock(r) {
   </section>`;
 }
 
-/* ---------- behind the scenes: agent log + what pipefix read ---------- */
+/* ---------- behind the scenes: agent log + what Strandline read ---------- */
 function auditBlock(r) {
   const a = r.agent, info = r.findings.filter(f => f.severity === "info" && !WF_STEP.test(f.title));
   const nCalls = r.calls.reduce((s, c) => s + c.count, 0);
@@ -1450,7 +1450,7 @@ function auditBlock(r) {
       </div>
       <nav class="log-jump" aria-label="Jump to a step">${[...new Map(a.trace.filter(e => e.kind === "phase").map(e => [e.phase, e.text])).entries()].map(([p, t]) => `<a href="#lgp-${esc(p)}">${esc(t)}</a>`).join("")}</nav>
       ${logHTML(a.trace)}</details>` : ""}
-    <details class="more-d"><summary>What pipefix read: ${nCalls} read-only AWS call${nCalls === 1 ? "" : "s"}</summary>
+    <details class="more-d"><summary>What Strandline read: ${nCalls} read-only AWS call${nCalls === 1 ? "" : "s"}</summary>
       <div class="calls">${r.calls.map(c => `<code>${esc(c.call)}${c.count > 1 ? " ×" + c.count : ""}</code>`).join("")}</div>
       ${r.errors.length ? `<p>Not readable or not found: ${r.errors.map(esc).join(", ")}.</p>` : ""}
       ${r.config_files.length ? `<p>Config files traced: ${r.config_files.map(f => `<code>${esc(f)}</code>`).join(" ")}</p>` : ""}
@@ -1586,7 +1586,7 @@ function panel(f) {
       const rows = f.trace.filter(t => t.directive === d).slice().reverse();
       const next = f.fix?.settings?.[d];
       return `<div><h3>${esc(d)}</h3>
-        ${next ? `<div class="rung next"><span class="lvl">pipefix</span><code>withName: '${esc(f.name)}'</code><code>${esc(next)}</code><span class="where">conf/pipefix.config</span><span class="state">After merge, this wins</span></div>` : ""}
+        ${next ? `<div class="rung next"><span class="lvl">strandline</span><code>withName: '${esc(f.name)}'</code><code>${esc(next)}</code><span class="where">conf/strandline.config</span><span class="state">After merge, this wins</span></div>` : ""}
         ${rows.map(t => `<div class="rung ${t.wins && !next ? "now" : "over"}${t.wins && next ? " now" : ""}"><span class="lvl">${esc(LV[t.level] || t.level)}</span><code>${esc(t.selector === "process" ? "process" : t.selector)}</code><code>${esc(t.value)}</code><span class="where">${esc(t.where)}</span>${t.wins ? `<span class="state">${next ? "In effect now; replaced by the fix" : "In effect now"}</span>` : ""}</div>`).join("")}
       </div>`; }).join("")}</div>
       <p class="note">Highest precedence first, as Nextflow applies it: withName, then withLabel, then the process script, then the generic process block.</p>`;
@@ -1658,7 +1658,7 @@ function wireActions(job) {
     catch (err) { e.target.disabled = false; msg(`<div class="result-msg err">${esc(err.message)}</div>`); }
   });
   const openDlg = () => {
-    $("#mr-steps").innerHTML = [`create a branch <code>pipefix/fix-…</code> in <span class="mono">${esc(job.result.repo)}</span>`,
+    $("#mr-steps").innerHTML = [`create a branch <code>strandline/fix-…</code> in <span class="mono">${esc(job.result.repo)}</span>`,
       `commit ${job.result.files.map(f => `<code>${esc(f)}</code>`).join(" and ")}`, "push it to the origin remote",
       "open the merge request with the evidence, the config trace and the platform findings"].map(s => `<li>${s}</li>`).join("");
     const agentRun = !!job.result.agent;

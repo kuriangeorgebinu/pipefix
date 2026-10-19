@@ -8,7 +8,7 @@ import io
 import json
 from datetime import datetime, timezone
 
-from pipefix.aws.session import Clients
+from strandline.aws.session import Clients
 
 
 class ClientError(Exception):

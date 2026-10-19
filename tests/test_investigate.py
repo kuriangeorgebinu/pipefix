@@ -1,4 +1,4 @@
-"""End-to-end tests of `pipefix investigate` against a fake AWS account and an nf-core-style repo."""
+"""End-to-end tests of `strandline investigate` against a fake AWS account and an nf-core-style repo."""
 import shutil
 import subprocess
 from datetime import datetime, timezone
@@ -7,12 +7,12 @@ from pathlib import Path
 import pytest
 
 from fakeaws import (GATK_JOB, GATK_WORKDIR_FILES, STAR_JOB, WORK, batch_account, ct_event, omics_account)
-from pipefix.aws.workdir import parse_command_trace, work_dir_from_command
-from pipefix.configtrace import load_repo
-from pipefix.investigate import investigate
-from pipefix.models import FailureClass
-from pipefix.patch import CONFIG_REL, build_patch
-from pipefix.report import body, redact
+from strandline.aws.workdir import parse_command_trace, work_dir_from_command
+from strandline.configtrace import load_repo
+from strandline.investigate import investigate
+from strandline.models import FailureClass
+from strandline.patch import CONFIG_REL, build_patch
+from strandline.report import body, redact
 
 EX = Path(__file__).resolve().parent.parent / "examples"
 GiB = 1024**3
@@ -21,7 +21,7 @@ GiB = 1024**3
 @pytest.fixture
 def repo(tmp_path):
     dst = tmp_path / "sarek-mini"
-    shutil.copytree(Path(__file__).resolve().parent.parent / "pipefix" / "demo" / "pipeline", dst)
+    shutil.copytree(Path(__file__).resolve().parent.parent / "strandline" / "demo" / "pipeline", dst)
     return dst
 
 
@@ -170,7 +170,7 @@ def test_omics_run(repo):
 # ---------- the MR path ----------
 
 def test_open_pr_refuses_without_token_and_pushes_nothing(repo, monkeypatch, tmp_path):
-    from pipefix import cli
+    from strandline import cli
     origin = tmp_path / "origin.git"
     subprocess.run(["git", "init", "-q", "--bare", str(origin)], check=True)
     for args in (["init", "-q", "-b", "main"], ["add", "-A"], ["-c", "user.email=t@t", "-c", "user.name=t", "commit", "-qm", "init"],
@@ -178,7 +178,7 @@ def test_open_pr_refuses_without_token_and_pushes_nothing(repo, monkeypatch, tmp
         subprocess.run(["git", *args], cwd=repo, check=True)
     monkeypatch.delenv("GITHUB_TOKEN", raising=False)
     monkeypatch.delenv("GH_TOKEN", raising=False)
-    monkeypatch.setattr("pipefix.aws.session.boto3_clients", lambda *a, **k: batch_account([GATK_JOB], GATK_WORKDIR_FILES))
+    monkeypatch.setattr("strandline.aws.session.boto3_clients", lambda *a, **k: batch_account([GATK_JOB], GATK_WORKDIR_FILES))
     with pytest.raises(RuntimeError, match="GITHUB_TOKEN"):
         cli.main(["investigate", "--batch-job", "job-gatk-1", "--repo", str(repo), "--open-pr", "--no-cloudtrail"])
     assert not (repo / CONFIG_REL).exists()                     # nothing written, nothing pushed
@@ -192,7 +192,7 @@ def test_redact():
 
 def test_unexpected_aws_errors_are_recorded_not_fatal():
     from fakeaws import ClientError, fake_clients
-    from pipefix.aws.session import AwsUnavailable
+    from strandline.aws.session import AwsUnavailable
     c = fake_clients({"ec2": {"describe_instance_types": lambda **k: (_ for _ in ()).throw(ClientError("InvalidInstanceType"))},
                       "sts": {"get_caller_identity": lambda **k: (_ for _ in ()).throw(ClientError("ExpiredToken"))}})
     assert c.call("ec2", "describe_instance_types", InstanceTypes=["nope.x"]) ["__error__"] == "InvalidInstanceType"

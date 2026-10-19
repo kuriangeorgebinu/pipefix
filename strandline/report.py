@@ -42,7 +42,7 @@ def pr_title(patch: Patch) -> str:
     names = sorted({f.name for f in patch.fixes})
     head = ", ".join(names[:3]) + (f" +{len(names) - 3}" if len(names) > 3 else "")
     kind = " agent" if getattr(patch, "agent", None) else " (AI-researched)" if patch.ai_used else ""
-    return f"pipefix{kind}: fix failed pipeline tasks ({head})"
+    return f"strandline{kind}: fix failed pipeline tasks ({head})"
 
 
 def _ev(e: dict) -> str:
@@ -60,14 +60,14 @@ def _agent_section(patch: Patch) -> list[str]:
     aws = [s for s in res.steps if s.ok and s.tool == "aws_call"]
     rounds = res.review.get("rounds", [])
     lines = ["> **AI-generated proposal.** AI agents can make mistakes. Every quote and number below was re-checked by "
-             "pipefix, and a person must review the change before merging it.", "",
+             "strandline, and a person must review the change before merging it.", "",
              "## How the agents worked", "",
-             f"Three pipefix agents (`{_md(res.model)}`) worked on this. The primary agent chose and made its own "
+             f"Three Strandline agents (`{_md(res.model)}`) worked on this. The primary agent chose and made its own "
              f"read-only AWS calls ({len(aws)} in total across agents, found from the AWS API reference), read the "
              "pipeline repo, researched the docs, compared candidate solutions and proposed one. Two independent "
              f"experts ({', '.join(v for k, v in AGENTS.items() if k != 'primary')}) fact-checked it with their own "
              f"calls and reading" + (f" over {len(rounds)} round(s) until both agreed" if res.review.get("agreed") else "")
-             + ". pipefix enforced the steps, the read-only access, the verbatim evidence checks and the config checks"
+             + ". Strandline enforced the steps, the read-only access, the verbatim evidence checks and the config checks"
              + (f" (it refused {res.refused} call(s) that broke a rule)" if res.refused else "") + ".", ""]
     d = res.diagnosis
     if d:
@@ -137,9 +137,9 @@ def _ai_section(patch: Patch) -> list[str]:
         return lines + [f"Not used: {_md(ai.error)}", ""]
     used = ", ".join(f"`{n}`" for n in patch.ai_used) or "none"
     read = sum(1 for s in ai.sources if s.get("read"))
-    lines += [f"pipefix searched AWS, Nextflow/nf-core and Terraform sources, read {read} of the "
+    lines += [f"Strandline searched AWS, Nextflow/nf-core and Terraform sources, read {read} of the "
               f"{len(ai.sources)} pages, and asked `{_md(ai.model)}` to propose the fix from them. Strict rule: "
-              "every value must be backed by a verbatim quote from a page pipefix read, and pipefix verified each "
+              "every value must be backed by a verbatim quote from a page Strandline read, and Strandline verified each "
               "quote against that page before writing anything (plus: accepted forms only, failed processes "
               f"only, within the platform's limits). AI-proposed fix used for: {used}. "
               "**Review these values before merging.**", ""]
@@ -156,7 +156,7 @@ def _ai_section(patch: Patch) -> list[str]:
             lines.append(f"- {_md(it['title'])}: {_md(it['detail'])}")
             lines += [f"  - source [{e['n']}] says: \"{_md(e['quote'])}\"" for e in it.get("evidence", [])]
     if ai.rejected:
-        lines += ["", "**Rejected by pipefix's checks (not written)**", ""] + [f"- {_md(r)}" for r in ai.rejected]
+        lines += ["", "**Rejected by Strandline's checks (not written)**", ""] + [f"- {_md(r)}" for r in ai.rejected]
     if ai.sources:
         lines += ["", "**Sources**", ""] + [f"{s['n']}. [{_md(s['title']) or s['url']}]({s['url']})"
                                              + ("" if s.get("read") else " (could not be read, so not citable)")
@@ -223,7 +223,7 @@ def body(diagnoses: list[Diagnosis], patch: Patch, inv: Investigation | None = N
         lines.append("")
     if patch.fixes:
         lines += ["## The fix", "",
-                  "Only the processes that failed are changed, in `conf/pipefix.config` (included last in "
+                  "Only the processes that failed are changed, in `conf/strandline.config` (included last in "
                   "`nextflow.config`, so it overrides the pipeline defaults). Resources grow with each retry, so a "
                   "second failure escalates instead of stopping the run.", ""]
         for fx in patch.fixes:
@@ -241,15 +241,15 @@ def body(diagnoses: list[Diagnosis], patch: Patch, inv: Investigation | None = N
               "- [ ] Check the new limits fit your compute environment and budget", ""]
     if inv and inv.calls:
         counts = Counter(c.split(":")[0] for c in inv.calls)
-        lines += ["<details><summary>What pipefix read (read-only AWS calls)</summary>", "",
+        lines += ["<details><summary>What Strandline read (read-only AWS calls)</summary>", "",
                   ", ".join(f"{svc}: {n}" for svc, n in sorted(counts.items())) + "."]
         if inv.errors:
             lines += ["", "Not readable or not found: " + _md(", ".join(sorted(set(inv.errors))[:15])) + "."]
         lines += ["", "</details>", ""]
-    lines += ["---", "Opened by [pipefix](https://github.com/kuriangeorgebinu/pipefix). Diagnoses are rule-based "
+    lines += ["---", "Opened by [strandline](https://github.com/kuriangeorgebinu/strandline). Diagnoses are rule-based "
               "and cite the exact log lines and numbers they used"
               + ("; the fix values marked AI were researched by an LLM from the cited sources and checked by "
-                 "pipefix" if patch.ai_used else "") + ". AWS account IDs are redacted."]
+                 "strandline" if patch.ai_used else "") + ". AWS account IDs are redacted."]
     return "\n".join(lines)
 
 

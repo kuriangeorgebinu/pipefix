@@ -1,4 +1,4 @@
-"""pipefix agent: three AI agents fix a failed pipeline run. Nothing about AWS, the platform or the fix is wired in.
+"""Strandline agent: three AI agents fix a failed pipeline run. Nothing about AWS, the platform or the fix is wired in.
 
 The PRIMARY agent investigates, researches and proposes; two EXPERT REVIEWERS (an AWS HealthOmics/Batch expert and
 a Nextflow/genomics-tools expert) fact-check it hard with their own tools and question it until both agree. Only
@@ -14,8 +14,8 @@ What the harness enforces (hard rules, checked in code, never decided for the ag
     only the current step's tools work; each step ends with its finish_* call, which is checked;
   - AWS is read-only: only Get/List/Describe/Lookup/Filter/BatchGet/Head operations, never secrets, keys, tokens,
     credentials or genomic data (S3 only Nextflow task files, ranged); parameters are validated against the API;
-  - every claim cites evidence that pipefix re-checks verbatim: a call's output (#n) or a page that was read;
-  - every number (memory, time, cpus, disk) is a formula over inputs that are each quoted from evidence; pipefix
+  - every claim cites evidence that Strandline re-checks verbatim: a call's output (#n) or a page that was read;
+  - every number (memory, time, cpus, disk) is a formula over inputs that are each quoted from evidence; Strandline
     recomputes it; config values must match a strict grammar; only the failed process is changed;
   - retries: a retry rule keeps the codes it has, adds only the observed exit code, and only with a quote that
     talks about that code; maxRetries without a retried code is refused;
@@ -161,7 +161,7 @@ COMMANDS: dict[str, dict] = {
                                 "evidence": EVIDENCE},
                      "required": ["process", "failure_class", "root_cause", "evidence"]},
     "finish_research": {"phases": ("research",), "finish": True,
-                        "desc": "End step 2 with 2-4 candidate solutions. Numbers need a derivation pipefix "
+                        "desc": "End step 2 with 2-4 candidate solutions. Numbers need a derivation strandline "
                                 "recomputes; other settings need a verbatim quote from a page that was read.",
                         "params": {"candidates": CANDIDATES,
                                    "no_config_reason": _p("object", "ONLY if no config change can fix this failure: "
@@ -221,7 +221,7 @@ AGENTS = {
     "nextflow_expert": "Nextflow & genomics tools expert",
 }
 
-RULES = """You are pipefix, the PRIMARY agent fixing a failed Nextflow genomics pipeline run on AWS (AWS
+RULES = """You are Strandline, the PRIMARY agent fixing a failed Nextflow genomics pipeline run on AWS (AWS
 HealthOmics or AWS Batch). You work in steps, in order, and the harness enforces them:
   1. DEBUG: find out exactly why the run failed.  2. RESEARCH SOLUTIONS in the docs.  3. PICK THE BEST SOLUTION.
   3b. EXPERT REVIEW: two independent experts fact-check you; you must answer them until both agree.
@@ -232,15 +232,15 @@ are from what the API returns. Platform facts (instance types and their memory, 
 documentation you read, never from memory.
 HARD RULES (breaking one gets your call refused):
 - Only the current step's tools work. Each step ends ONLY with its finish_* call.
-- Every claim cites evidence that pipefix re-checks word for word: {call: #n, quote} from a call's output, or
+- Every claim cites evidence that Strandline re-checks word for word: {call: #n, quote} from a call's output, or
   {source: n, quote} from a page you read with web_read_page. Never invent numbers, IDs, file names or quotes.
 - AWS is read-only; never ask for secrets, credentials or data files (S3 is only for Nextflow task files).
-- Fix only the process that failed. pipefix writes the settings as a withName block for that process, so put in
+- Fix only the process that failed. Strandline writes the settings as a withName block for that process, so put in
   "settings" only the directives you CHANGE. Forms: memory "{ N.GB * task.attempt }", time "{ N.h * task.attempt }",
   cpus "N", maxRetries "N", errorStrategy "{ task.exitStatus in <codes> ? 'retry' : 'finish' }",
   resourceLimits "[ memory: N.GB ]".
 - NUMBERS ARE DERIVED, NEVER GUESSED: every memory/time/cpus/disk value needs a derivation: a formula over named
-  inputs, each input quoted from evidence that shows it. pipefix recomputes it. Platform facts (e.g. a memory
+  inputs, each input quoted from evidence that shows it. Strandline recomputes it. Platform facts (e.g. a memory
   reserve) are inputs quoted from the docs; any headroom or margin you add is also an input you must back with
   evidence (a docs recommendation or something measured in this run). The formula may only use the literal
   constants 0, 1, 100, 1000 and 1024 (unit conversions); every other number is an input. Rows of a docs table can
@@ -256,12 +256,12 @@ HARD RULES (breaking one gets your call refused):
   lands on), with a quoted row from EVERY instance family the page lists that could hold the request, so the
   smallest fit is shown, not assumed. A recommended headroom and a platform memory reserve are different
   things: if the docs recommend headroom, it is its own input next to the reserve. In finish_decision give
-  lands_on {instance, source}: pipefix checks it against the table you quote. Every sentence must be true: do not
+  lands_on {instance, source}: Strandline checks it against the table you quote. Every sentence must be true: do not
   call an instance too small if it holds the request. Inline citations must be verbatim from the cited source.
 - THINK OUT LOUD: before each tool call write 1-3 sentences of reasoning, and give every call a 'reason'.
 - Be efficient. Account IDs appear as <account-id>; pass them as is."""
 
-REVIEW_RULES = """You are the {title}, an independent expert reviewer for pipefix. Another agent (the PRIMARY)
+REVIEW_RULES = """You are the {title}, an independent expert reviewer for Strandline. Another agent (the PRIMARY)
 diagnosed a failed Nextflow pipeline run on AWS and proposes a fix. Your job is to FACT-CHECK IT HARD so that no
 hallucination reaches the customer. Be skeptical: assume nothing the primary says is true until you have verified
 it yourself.
@@ -533,7 +533,7 @@ def _api():
         try:
             import botocore.session
         except ImportError as e:  # pragma: no cover - depends on the install
-            raise _Refused("the AWS API reference needs botocore (pip install 'pipefix[aws]')") from e
+            raise _Refused("the AWS API reference needs botocore (pip install 'strandline[aws]')") from e
         _BOTO = botocore.session.get_session()
     return _BOTO
 
@@ -567,7 +567,7 @@ CITED = [  # how agents cite inline: {source: 1, quote: "..."} / "..." (source 1
 
 
 def _sentence(text: str, rx: re.Pattern, limit: int = 240) -> str:
-    """The sentence around the first match of rx (so a refusal can show what pipefix found)."""
+    """The sentence around the first match of rx (so a refusal can show what Strandline found)."""
     t = re.sub(r"\s+", " ", text or "")
     m = rx.search(t)
     if not m:
@@ -720,7 +720,7 @@ class Agent:
         walk(params)
         if service == "s3" and op == "GetObject" and not S3_TASK_FILE.search(str(params.get("Key", ""))):
             raise _Refused("S3 objects are read only for Nextflow task files (.command.run/.sh/.log/.err/.out/"
-                           ".trace/.begin, .exitcode); pipefix never reads data")
+                           ".trace/.begin, .exitcode); Strandline never reads data")
 
     def _describe_api(self, args: dict) -> dict:
         s = _api()
@@ -1576,7 +1576,7 @@ class Agent:
     # ----- one tool call -----
     def _run_tool(self, phase: str, name: str, args: dict) -> tuple[str, bool]:
         if name not in COMMANDS:
-            raise _Refused(f"{name} is not a pipefix tool")
+            raise _Refused(f"{name} is not a Strandline tool")
         if not _in_phase(name, phase):
             raise _Refused(f"{name} is not available in this step; finish this step first")
         if name == "aws_call":
@@ -1722,7 +1722,7 @@ class Agent:
 
     def run(self) -> AgentResult:
         if not self.llm_key:
-            self.res.error = "The agent needs an LLM key (console, --env-file, or PIPEFIX_LLM_API_KEY / DEEPSEEK_API_KEY)."
+            self.res.error = "The agent needs an LLM key (console, --env-file, or STRANDLINE_LLM_API_KEY / DEEPSEEK_API_KEY)."
             return self.res
         start = {k: v for k, v in self.goal.items() if v}
         region = self.clients.region if self.clients else None
@@ -1869,7 +1869,7 @@ def open_mr(repo: str | Path, res: AgentResult, draft: bool = True) -> str:
     if existing := vcs.find_existing(remote, h):
         return existing
     if vcs.git(repo, "status", "--porcelain", "--", *patch.files.keys()):
-        raise RuntimeError("the files pipefix changes have uncommitted edits; commit or stash them first")
+        raise RuntimeError("the files Strandline changes have uncommitted edits; commit or stash them first")
     written = patch.apply(repo)
     text, title = body(res.diagnoses, patch, res.inv), pr_title(patch)
     branch, base = vcs.commit_branch(repo, written, title, text, h)

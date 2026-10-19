@@ -6,7 +6,7 @@ without opening anything. Scoring keeps three things separate so one good number
   value      the key number lands in the known-correct range (e.g. memory within one instance step)
   justified  nothing outside the case's allowed settings changed (no unjustified cpus/time/retry edits)
   decision   the right kind of outcome (agreed config change, or correctly no config change) and retry choice
-Run:  pipefix bench [--case ID] [--env-file .env] [--out results.json]
+Run:  strandline bench [--case ID] [--env-file .env] [--out results.json]
 """
 from __future__ import annotations
 

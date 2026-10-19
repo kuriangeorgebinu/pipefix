@@ -1,5 +1,5 @@
 """Prove the generated config with real Nextflow: it parses, the selectors match the processes (also when they
-run inside nested workflows), and each process gets the memory / queue / retries pipefix intended.
+run inside nested workflows), and each process gets the memory / queue / retries strandline intended.
 
 Skipped unless Nextflow is available (NEXTFLOW=/path/to/nextflow or `nextflow` on PATH). CI installs it.
 """
@@ -12,8 +12,8 @@ from pathlib import Path
 import pytest
 
 from fakeaws import GATK_JOB, GATK_WORKDIR_FILES, STAR_JOB, batch_account
-from pipefix.investigate import investigate
-from pipefix.patch import build_patch
+from strandline.investigate import investigate
+from strandline.patch import build_patch
 
 NXF = os.environ.get("NEXTFLOW") or shutil.which("nextflow")
 pytestmark = pytest.mark.skipif(not NXF, reason="Nextflow not installed")
@@ -47,13 +47,13 @@ workflow { SAREK(); MULTIQC() | view }
 
 def test_generated_config_with_real_nextflow(tmp_path):
     repo = tmp_path / "pipe"
-    shutil.copytree(Path(__file__).resolve().parent.parent / "pipefix" / "demo" / "pipeline", repo)
+    shutil.copytree(Path(__file__).resolve().parent.parent / "strandline" / "demo" / "pipeline", repo)
     jobs = [GATK_JOB, STAR_JOB]
     inv, diags = investigate(batch_account(jobs, GATK_WORKDIR_FILES), batch_jobs=[j["jobId"] for j in jobs],
                              cloudtrail=False)
     patch = build_patch(diags, repo, inv=inv)
     patch.apply(repo)
-    # run the probe with the repo's own config + pipefix's; let the local executor accept big requests
+    # run the probe with the repo's own config + Strandline's; let the local executor accept big requests
     (repo / "main.nf").write_text(PROBE)
     (repo / "local.config").write_text("executor { name = 'local'; memory = '2 TB'; cpus = 64 }\n"
                                        "process.executor = 'local'\nprocess.cpus = 1\n")

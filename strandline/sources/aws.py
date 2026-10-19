@@ -1,6 +1,6 @@
 """Offline AWS inputs: saved output of `aws batch describe-jobs` or `aws omics get-run` / `get-run-task`.
 
-For live investigation through the SDK, see pipefix.aws (used by `pipefix investigate`).
+For live investigation through the SDK, see strandline.aws (used by `strandline investigate`).
 """
 from __future__ import annotations
 

@@ -249,7 +249,7 @@ def investigate_batch(clients: Clients, job_ids: list[str] | None = None, queue:
     for f in inv.failures:
         if f.context.get("process_name_source") != ".command.run header":
             inv.add("Process name is approximate", f"Could not read {f.work_dir or 'the task work dir'}/.command.run "
-                    f"for job {f.job_ref}; using the job name `{f.context.get('job_name')}`. pipefix matches it "
+                    f"for job {f.job_ref}; using the job name `{f.context.get('job_name')}`. Strandline matches it "
                     "against the processes defined in the repo.", severity="warn", process=f.simple_name)
     roles = {r for f in inv.failures for r in (f.context.get("job_role"), f.context.get("execution_role")) if r}
     inv.facts["roles"] = sorted(roles)

@@ -1,6 +1,6 @@
 """boto3 session handling, with throttling retries and a record of every AWS call made.
 
-pipefix only ever calls read-only APIs (Describe*, Get*, List*, LookupEvents, s3:GetObject). The call log is
+strandline only ever calls read-only APIs (Describe*, Get*, List*, LookupEvents, s3:GetObject). The call log is
 written into the investigation report so a reviewer can see exactly what was read.
 """
 from __future__ import annotations
@@ -33,7 +33,7 @@ class Clients:
     def call(self, service: str, op: str, **kwargs) -> dict:
         """Call one read-only API with retries on throttling. Returns {} (and records why) on access errors."""
         if not op.startswith(READ_ONLY_PREFIXES):
-            raise ValueError(f"pipefix only makes read-only AWS calls, refused {service}:{op}")
+            raise ValueError(f"Strandline only makes read-only AWS calls, refused {service}:{op}")
         self.calls.append(f"{service}:{op}")
         delay = 0.5
         for attempt in range(5):
@@ -75,7 +75,7 @@ def boto3_clients(profile: str | None = None, region: str | None = None) -> Clie
         import boto3
         from botocore.config import Config
     except ImportError as e:  # pragma: no cover - depends on the install
-        raise AwsUnavailable("AWS access needs boto3: pip install 'pipefix[aws]'") from e
+        raise AwsUnavailable("AWS access needs boto3: pip install 'strandline[aws]'") from e
     import os
     region = region or os.environ.get("AWS_REGION") or os.environ.get("AWS_DEFAULT_REGION")
     session = boto3.Session(profile_name=profile, region_name=region)
@@ -83,7 +83,7 @@ def boto3_clients(profile: str | None = None, region: str | None = None) -> Clie
         raise AwsUnavailable("No AWS credentials found. Run `aws configure` or `aws sso login`, or pass --profile.")
     if not session.region_name:
         raise AwsUnavailable("No AWS region set. Pass --region (e.g. us-east-1) or set AWS_REGION.")
-    cfg = Config(retries={"max_attempts": 5, "mode": "adaptive"}, user_agent_extra="pipefix")
+    cfg = Config(retries={"max_attempts": 5, "mode": "adaptive"}, user_agent_extra="strandline")
     return Clients(lambda svc: session.client(svc, config=cfg), region=session.region_name)
 
 

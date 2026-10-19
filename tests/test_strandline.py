@@ -4,13 +4,13 @@ from pathlib import Path
 
 import pytest
 
-from pipefix.classify import classify
-from pipefix.cli import main
-from pipefix.models import FailureClass, TaskFailure
-from pipefix.patch import CONFIG_REL, INCLUDE_LINE, build_patch
-from pipefix.report import pr_body
-from pipefix.sources import aws, nextflow
-from pipefix.units import parse_duration, parse_memory
+from strandline.classify import classify
+from strandline.cli import main
+from strandline.models import FailureClass, TaskFailure
+from strandline.patch import CONFIG_REL, INCLUDE_LINE, build_patch
+from strandline.report import pr_body
+from strandline.sources import aws, nextflow
+from strandline.units import parse_duration, parse_memory
 
 EX = Path(__file__).resolve().parent.parent / "examples"
 GB = 1024**3
